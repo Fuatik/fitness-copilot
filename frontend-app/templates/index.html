@@ -634,7 +634,10 @@
         </div>
 
         <!-- Step 2: Test Week -->
-        <div id="step-test-week" class="card hidden">
+        <!-- Test week is now integrated into step-program -->
+
+        <!-- Step 2: My Program (includes test weeks) -->
+        <div id="step-program" class="card hidden">
             <div class="progress-steps">
                 <div class="step completed">
                     <div class="step-number">✓</div>
@@ -642,46 +645,7 @@
                 </div>
                 <div class="step active">
                     <div class="step-number">2</div>
-                    <div class="step-label">Test Week</div>
-                </div>
-                <div class="step">
-                    <div class="step-number">3</div>
-                    <div class="step-label">Train</div>
-                </div>
-            </div>
-
-            <div class="program-summary">
-                <h3 id="program-name"></h3>
-                <p id="program-description"></p>
-            </div>
-
-            <div class="test-week-banner">
-                <h3>📊 Test Week Required</h3>
-                <p>Before starting, you need to complete test week to establish your baseline strength. Perform each exercise with a challenging weight for 5 reps (leaving 2 reps in reserve).</p>
-            </div>
-
-            <div id="test-inputs"></div>
-
-            <div class="btn-group">
-                <button onclick="goBackToOnboarding()" class="btn btn-secondary">Back</button>
-                <button onclick="saveTestResults()" class="btn btn-success" style="flex: 1;">Save & Continue</button>
-            </div>
-        </div>
-
-        <!-- Step 3: My Program -->
-        <div id="step-program" class="card hidden">
-            <div class="progress-steps">
-                <div class="step completed">
-                    <div class="step-number">✓</div>
-                    <div class="step-label">Profile</div>
-                </div>
-                <div class="step completed">
-                    <div class="step-number">✓</div>
-                    <div class="step-label">Test Week</div>
-                </div>
-                <div class="step active">
-                    <div class="step-number">3</div>
-                    <div class="step-label">Train</div>
+                    <div class="step-label">Program</div>
                 </div>
             </div>
 
@@ -691,12 +655,18 @@
             <div class="week-selector" id="week-selector"></div>
 
             <!-- Exercise Management Buttons -->
-            <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+            <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
                 <button onclick="showAddExerciseModal()" class="btn btn-primary">
                     ➕ Add Exercise
                 </button>
+                <button onclick="showSaveProgramModal()" class="btn btn-success">
+                    💾 Save Program
+                </button>
                 <button onclick="showProgramSelector()" class="btn btn-secondary">
                     🔄 Change Program
+                </button>
+                <button onclick="showProfileEditor()" class="btn btn-secondary">
+                    ⚙️ Edit Profile
                 </button>
             </div>
 
@@ -728,7 +698,9 @@
             <form id="add-exercise-form" onsubmit="submitAddExercise(event)">
                 <div class="form-group">
                     <label>Exercise Name</label>
-                    <input type="text" id="new-exercise-name" required placeholder="e.g., Incline Dumbbell Press">
+                    <input type="text" id="new-exercise-name" list="exercise-list" required placeholder="Start typing to search...">
+                    <datalist id="exercise-list"></datalist>
+                    <small style="color: var(--gray-600);">💡 Start typing to see available exercises</small>
                 </div>
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
@@ -825,6 +797,80 @@
         </div>
     </div>
 
+    <!-- Profile Editor Modal -->
+    <div id="profileEditorModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeProfileEditor()">&times;</span>
+            <h2>⚙️ Edit Profile</h2>
+            
+            <form id="profile-edit-form" onsubmit="saveProfileChanges(event)">
+                <div class="form-group">
+                    <label>Age</label>
+                    <input type="number" id="edit-age" min="15" max="100" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Weight (kg)</label>
+                    <input type="number" id="edit-weight" step="0.1" min="30" max="300" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Height (cm)</label>
+                    <input type="number" id="edit-height" min="120" max="250" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Experience Level</label>
+                    <select id="edit-experience" required>
+                        <option value="beginner">Beginner (0-6 months)</option>
+                        <option value="intermediate">Intermediate (6-24 months)</option>
+                        <option value="advanced">Advanced (2+ years)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Physical Limitations (Optional)</label>
+                    <textarea id="edit-limitations" rows="3" placeholder="e.g., Lower back pain, knee issues..."></textarea>
+                </div>
+                
+                <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <button type="button" onclick="closeProfileEditor()" class="btn btn-secondary" style="flex: 1;">Cancel</button>
+                    <button type="submit" class="btn btn-success" style="flex: 1;">💾 Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Save Program Modal -->
+    <div id="saveProgramModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeSaveProgramModal()">&times;</span>
+            <h2>💾 Save Program</h2>
+            
+            <p style="color: var(--gray-600); margin-bottom: 20px;">
+                Save your current program with all customizations so you can reload it later.
+            </p>
+            
+            <form id="save-program-form" onsubmit="submitSaveProgram(event)">
+                <div class="form-group">
+                    <label>Program Name</label>
+                    <input type="text" id="save-program-name" required placeholder="e.g., Upper Body Focus, Injury Recovery">
+                    <small style="color: var(--gray-600);">💡 Choose a descriptive name to identify this program later</small>
+                </div>
+                
+                <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <button type="button" onclick="closeSaveProgramModal()" class="btn btn-secondary" style="flex: 1;">Cancel</button>
+                    <button type="submit" class="btn btn-success" style="flex: 1;">💾 Save Program</button>
+                </div>
+            </form>
+            
+            <div id="saved-programs-list" style="margin-top: 30px; display: none;">
+                <h3 style="font-size: 18px; margin-bottom: 12px; color: var(--gray-700);">Your Saved Programs</h3>
+                <div id="saved-programs-container"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Agent Bricks Chat Widget -->
     <div id="chatContainer" class="chat-widget-container hidden">
         <button class="chat-close" onclick="toggleChat()" title="Close chat">×</button>
@@ -884,21 +930,16 @@
                     })
                 });
                 
-                // Show test week step
-                showTestWeekStep();
+                // Show program step directly (test weeks handled inline)
+                showProgramStep();
             } catch (error) {
                 alert('Error: ' + error.message);
             }
         });
 
-        function showTestWeekStep() {
-            // Hide ALL steps first
-            document.getElementById('step-onboarding').classList.add('hidden');
-            document.getElementById('step-test-week').classList.remove('hidden');
-            document.getElementById('step-program').classList.add('hidden');
-            
-            document.getElementById('program-name').textContent = programInfo.name;
-            document.getElementById('program-description').textContent = programInfo.description;
+        // showTestWeekStep() removed - functionality merged into program step
+        function showTestWeekStep_DEPRECATED() {
+            // This function is deprecated and should not be called
             
             // Create test input fields
             const container = document.getElementById('test-inputs');
@@ -955,7 +996,6 @@
         async function showProgramStep() {
             // Hide ALL steps first
             document.getElementById('step-onboarding').classList.add('hidden');
-            document.getElementById('step-test-week').classList.add('hidden');
             document.getElementById('step-program').classList.remove('hidden');
             
             document.getElementById('program-subtitle').textContent = programInfo.name;
@@ -1044,7 +1084,28 @@
                     return;
                 }
                 
-                let html = `
+                let html = '';
+                
+                // Show banner for test weeks
+                if (data.is_test_week) {
+                    if (data.is_first_test) {
+                        html += `
+                            <div class="test-week-banner" style="background-color: #e3f2fd; border-left: 4px solid #2196f3; padding: 16px; margin-bottom: 20px; border-radius: 8px;">
+                                <h3 style="margin: 0 0 8px 0; color: #1976d2;">🏋️ First Test Week</h3>
+                                <p style="margin: 0; color: #424242;">Select appropriate starting weights for each exercise and perform as many reps as possible. This will establish your baseline for the program.</p>
+                            </div>
+                        `;
+                    } else {
+                        html += `
+                            <div class="test-week-banner" style="background-color: #fff3e0; border-left: 4px solid #ff9800; padding: 16px; margin-bottom: 20px; border-radius: 8px;">
+                                <h3 style="margin: 0 0 8px 0; color: #f57c00;">📊 Test Week</h3>
+                                <p style="margin: 0; color: #424242;">Weights are suggested based on your previous performance. Perform as many reps as possible to measure progress.</p>
+                            </div>
+                        `;
+                    }
+                }
+                
+                html += `
                     <table class="workout-table">
                         <thead>
                             <tr>
@@ -1059,12 +1120,26 @@
                 `;
                 
                 data.exercises.forEach(ex => {
+                    // Handle null weights (first test)
+                    const weightDisplay = ex.weight_kg === null ? 
+                        '<input type="number" class="inline-input" step="0.5" placeholder="Enter weight" style="width: 80px; padding: 4px; border: 1px solid #ddd; border-radius: 4px;">' : 
+                        ex.weight_kg;
+                    
+                    // Handle null reps (any test week)
+                    const repsDisplay = ex.reps === null ? 
+                        '<input type="number" class="inline-input" placeholder="Max reps" style="width: 80px; padding: 4px; border: 1px solid #ddd; border-radius: 4px;">' : 
+                        ex.reps;
+                    
+                    // Add note for test week exercises
+                    const noteText = ex.note ? `<br><small style="color: #f57c00; font-weight: 500;">📝 ${ex.note}</small>` : 
+                                    (ex.notes ? `<br><small style="color: var(--gray-600);">${ex.notes}</small>` : '');
+                    
                     html += `
                         <tr>
-                            <td><strong>${ex.exercise}</strong>${ex.notes ? `<br><small style="color: var(--gray-600);">${ex.notes}</small>` : ''}</td>
-                            <td>${ex.weight_kg}</td>
+                            <td><strong>${ex.exercise}</strong>${noteText}</td>
+                            <td>${weightDisplay}</td>
                             <td>${ex.sets}</td>
-                            <td>${ex.reps}</td>
+                            <td>${repsDisplay}</td>
                             <td>
                                 <span class="exercise-link" onclick="showExercise('${ex.exercise.replace(/'/g, "\\'")}')">ℹ️ Info</span>
                                 ${ex.is_custom ? `
@@ -1077,6 +1152,18 @@
                 });
                 
                 html += '</tbody></table>';
+                
+                // Add save button for test weeks
+                if (data.is_test_week) {
+                    html += `
+                        <div style="margin-top: 20px;">
+                            <button onclick="saveTestResults()" class="btn btn-success" style="width: 100%;">
+                                💾 Save Test Results
+                            </button>
+                        </div>
+                    `;
+                }
+                
                 container.innerHTML = html;
                 
             } catch (error) {
@@ -1122,7 +1209,6 @@
 
         function goBackToOnboarding() {
             // Hide ALL steps first
-            document.getElementById('step-test-week').classList.add('hidden');
             document.getElementById('step-program').classList.add('hidden');
             document.getElementById('step-onboarding').classList.remove('hidden');
         }
@@ -1193,8 +1279,46 @@
             }
         }
         
+        // Load available exercises for autocomplete
+        async function loadExerciseList() {
+            try {
+                const resp = await fetch('/api/exercises');
+                const exercises = await resp.json();
+                
+                const datalist = document.getElementById('exercise-list');
+                datalist.innerHTML = '';
+                
+                // Group by primary muscle for better organization
+                const grouped = {};
+                exercises.forEach(ex => {
+                    const primaryMuscle = ex.muscles && ex.muscles.length > 0 ? ex.muscles[0] : 'Other';
+                    if (!grouped[primaryMuscle]) {
+                        grouped[primaryMuscle] = [];
+                    }
+                    grouped[primaryMuscle].push(ex.name);
+                });
+                
+                // Add options with muscle group labels
+                Object.keys(grouped).sort().forEach(muscle => {
+                    grouped[muscle].sort().forEach(name => {
+                        const option = document.createElement('option');
+                        option.value = name;
+                        option.textContent = `${name} (${muscle})`;
+                        datalist.appendChild(option);
+                    });
+                });
+                
+                console.log(`[ExerciseList] Loaded ${exercises.length} exercises`);
+            } catch (error) {
+                console.error('[ExerciseList] Error loading exercises:', error);
+            }
+        }
+        
         // Load user state when page loads
-        window.addEventListener('DOMContentLoaded', loadUserState);
+        window.addEventListener('DOMContentLoaded', () => {
+            loadUserState();
+            loadExerciseList();
+        });
 
         function toggleChat() {
             const chatContainer = document.getElementById('chatContainer');
@@ -1413,6 +1537,143 @@
 
         function closeProgramSelector() {
             document.getElementById('programSelectorModal').classList.remove('show');
+        }
+
+        async function showProfileEditor() {
+            // Load current user profile data
+            try {
+                const resp = await fetch(`/api/user_profile?user_hash=${encodeURIComponent(userHashValue)}`);
+                const profile = await resp.json();
+                
+                if (profile.error) {
+                    alert('Error loading profile: ' + profile.error);
+                    return;
+                }
+                
+                // Populate form with current values
+                document.getElementById('edit-age').value = profile.age || '';
+                document.getElementById('edit-weight').value = profile.weight || '';
+                document.getElementById('edit-height').value = profile.height || '';
+                document.getElementById('edit-experience').value = profile.experience || 'beginner';
+                document.getElementById('edit-limitations').value = profile.limitations || '';
+                
+                // Show modal
+                document.getElementById('profileEditorModal').classList.add('show');
+            } catch (error) {
+                alert('Error loading profile: ' + error.message);
+            }
+        }
+
+        function closeProfileEditor() {
+            document.getElementById('profileEditorModal').classList.remove('show');
+        }
+
+        async function saveProfileChanges(event) {
+            event.preventDefault();
+            
+            const profileData = {
+                user_hash: userHashValue,
+                age: parseInt(document.getElementById('edit-age').value),
+                weight: parseFloat(document.getElementById('edit-weight').value),
+                height: parseInt(document.getElementById('edit-height').value),
+                experience: document.getElementById('edit-experience').value,
+                limitations: document.getElementById('edit-limitations').value
+            };
+            
+            try {
+                const resp = await fetch('/api/update_profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(profileData)
+                });
+                
+                const result = await resp.json();
+                
+                if (result.error) {
+                    alert('Error updating profile: ' + result.error);
+                    return;
+                }
+                
+                alert('✅ Profile updated successfully!');
+                closeProfileEditor();
+            } catch (error) {
+                alert('Error saving profile: ' + error.message);
+            }
+        }
+
+        async function showSaveProgramModal() {
+            // Clear the form
+            document.getElementById('save-program-name').value = '';
+            
+            // Load user's existing saved programs
+            try {
+                const resp = await fetch(`/api/saved_programs?user_hash=${encodeURIComponent(userHashValue)}`);
+                const data = await resp.json();
+                
+                if (data.programs && data.programs.length > 0) {
+                    document.getElementById('saved-programs-list').style.display = 'block';
+                    
+                    let html = '<div style="display: flex; flex-direction: column; gap: 8px;">';
+                    data.programs.forEach(prog => {
+                        const date = new Date(prog.created_at).toLocaleDateString();
+                        html += `
+                            <div style="padding: 12px; background: var(--gray-100); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <strong>${prog.name}</strong>
+                                    <small style="color: var(--gray-600); display: block;">Saved on ${date}</small>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    document.getElementById('saved-programs-container').innerHTML = html;
+                } else {
+                    document.getElementById('saved-programs-list').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error loading saved programs:', error);
+            }
+            
+            // Show modal
+            document.getElementById('saveProgramModal').classList.add('show');
+        }
+
+        function closeSaveProgramModal() {
+            document.getElementById('saveProgramModal').classList.remove('show');
+        }
+
+        async function submitSaveProgram(event) {
+            event.preventDefault();
+            
+            const programName = document.getElementById('save-program-name').value.trim();
+            
+            if (!programName) {
+                alert('Please enter a program name');
+                return;
+            }
+            
+            try {
+                const resp = await fetch('/api/save_program', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_hash: userHashValue,
+                        program_name: programName
+                    })
+                });
+                
+                const result = await resp.json();
+                
+                if (result.error) {
+                    alert('Error saving program: ' + result.error);
+                    return;
+                }
+                
+                alert(`✅ Program "${programName}" saved successfully!\n\n${result.exercise_count} custom exercises saved.`);
+                closeSaveProgramModal();
+            } catch (error) {
+                alert('Error saving program: ' + error.message);
+            }
         }
 
         async function switchProgram(programId, programName) {

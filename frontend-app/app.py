@@ -216,8 +216,13 @@ def api_workout():
     if not prog:
         return jsonify({"error": "No program assigned. Please complete onboarding first."}), 400
     
-    workout = fitness_broker.generate_workout(user_hash, prog[0]['program_id'], week)
-    return jsonify({"week": week, "exercises": workout})
+    workout_data = fitness_broker.generate_workout(user_hash, prog[0]['program_id'], week)
+    return jsonify({
+        "week": week,
+        "is_test_week": workout_data['is_test_week'],
+        "is_first_test": workout_data['is_first_test'],
+        "exercises": workout_data['exercises']
+    })
 
 @app.route("/api/exercise/<name>")
 def api_exercise(name):
@@ -347,6 +352,16 @@ def api_list_programs():
     """)
     return jsonify(programs or [])
 
+@app.route("/api/exercises")
+def api_list_exercises():
+    """List all available exercises from database, grouped by primary muscle."""
+    exercises = lakebase.run_query("""
+        SELECT name, muscles, equipment, description
+        FROM exercise_metadata
+        ORDER BY name
+    """)
+    return jsonify(exercises or [])
+
 @app.route("/api/switch_program", methods=["POST"])
 def api_switch_program():
     """Switch user to a different program (resets progress)."""
@@ -386,6 +401,141 @@ def api_switch_program():
         "message": f"Switched to {prog[0]['name']}",
         "program_name": prog[0]['name'],
         "requires_test_week": True
+    })
+
+@app.route("/api/user_profile")
+def api_user_profile():
+    """Get user's profile data."""
+    user_hash = request.args.get('user_hash')
+    
+    if not user_hash:
+        return jsonify({"error": "Missing user_hash"}), 400
+    
+    profile = lakebase.run_query("""
+        SELECT age, weight_kg, height_cm, experience, limitations
+        FROM user_profiles
+        WHERE user_id_hash = %s
+    """, (user_hash,))
+    
+    if not profile:
+        return jsonify({"error": "Profile not found"}), 404
+    
+    return jsonify({
+        "age": profile[0]['age'],
+        "weight": profile[0]['weight_kg'],
+        "height": profile[0]['height_cm'],
+        "experience": profile[0]['experience'],
+        "limitations": profile[0]['limitations'] or ''
+    })
+
+@app.route("/api/update_profile", methods=["POST"])
+def api_update_profile():
+    """Update user's profile data."""
+    data = request.get_json()
+    user_hash = data.get('user_hash')
+    
+    if not user_hash:
+        return jsonify({"error": "Missing user_hash"}), 400
+    
+    # Update profile
+    lakebase.run_write("""
+        UPDATE user_profiles
+        SET age = %s,
+            weight_kg = %s,
+            height_cm = %s,
+            experience = %s,
+            limitations = %s
+        WHERE user_id_hash = %s
+    """, (
+        data.get('age'),
+        data.get('weight'),
+        data.get('height'),
+        data.get('experience'),
+        data.get('limitations', ''),
+        user_hash
+    ))
+    
+    return jsonify({
+        "success": True,
+        "message": "Profile updated successfully"
+    })
+
+@app.route("/api/save_program", methods=["POST"])
+def api_save_program():
+    """Save current program with all customizations as a named template."""
+    data = request.get_json()
+    user_hash = data.get('user_hash')
+    program_name = data.get('program_name')
+    
+    if not user_hash or not program_name:
+        return jsonify({"error": "Missing user_hash or program_name"}), 400
+    
+    # Get current program state
+    user_prog = lakebase.run_query(
+        "SELECT program_id, current_week FROM user_programs WHERE user_id_hash = %s",
+        (user_hash,)
+    )
+    
+    if not user_prog:
+        return jsonify({"error": "No active program found"}), 404
+    
+    program_id = user_prog[0]['program_id']
+    
+    # Check if name already exists for this user
+    existing = lakebase.run_query(
+        "SELECT id FROM user_saved_programs WHERE user_id_hash = %s AND custom_name = %s",
+        (user_hash, program_name)
+    )
+    
+    if existing:
+        return jsonify({"error": "A program with this name already exists"}), 400
+    
+    # Insert saved program record
+    lakebase.run_write("""
+        INSERT INTO user_saved_programs (user_id_hash, custom_name, base_program_id, created_at)
+        VALUES (%s, %s, %s, NOW())
+    """, (user_hash, program_name, program_id))
+    
+    # Get the new saved program ID
+    saved_prog = lakebase.run_query(
+        "SELECT id FROM user_saved_programs WHERE user_id_hash = %s AND custom_name = %s",
+        (user_hash, program_name)
+    )
+    saved_program_id = saved_prog[0]['id']
+    
+    # Count custom exercises for this program
+    custom_exercises = lakebase.run_query("""
+        SELECT COUNT(*) as count
+        FROM user_custom_exercises
+        WHERE user_id_hash = %s AND program_id = %s
+    """, (user_hash, program_id))
+    
+    exercise_count = custom_exercises[0]['count'] if custom_exercises else 0
+    
+    return jsonify({
+        "success": True,
+        "message": f"Program '{program_name}' saved successfully",
+        "saved_program_id": saved_program_id,
+        "exercise_count": exercise_count
+    })
+
+@app.route("/api/saved_programs")
+def api_saved_programs():
+    """Get list of user's saved programs."""
+    user_hash = request.args.get('user_hash')
+    
+    if not user_hash:
+        return jsonify({"error": "Missing user_hash"}), 400
+    
+    programs = lakebase.run_query("""
+        SELECT id, name, base_program_id, created_at
+        FROM user_saved_programs
+        WHERE user_id_hash = %s
+        ORDER BY created_at DESC
+    """, (user_hash,))
+    
+    return jsonify({
+        "programs": programs or []
     })
 
 

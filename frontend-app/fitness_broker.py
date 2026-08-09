@@ -103,18 +103,54 @@ def get_user_custom_exercises(user_hash, program_id, week):
     """, (user_hash, program_id, week))
     return rows or []
 
+def copy_template_to_user_exercises(user_hash, program_id, week):
+    """
+    Copy program template exercises to user_custom_exercises if they don't exist yet.
+    This makes ALL exercises editable by the user.
+    
+    Args:
+        user_hash (str): User identifier
+        program_id (int): Program ID
+        week (int): Week number
+    """
+    template = get_program_template(program_id, week)
+    
+    for ex in template:
+        # Check if this exercise already exists in user_custom_exercises
+        existing = lakebase.run_query("""
+            SELECT id FROM user_custom_exercises
+            WHERE user_id_hash = %s AND program_id = %s AND week = %s AND exercise_name = %s
+        """, (user_hash, program_id, week, ex['exercise_name']))
+        
+        if not existing:
+            # Insert template exercise as user exercise with source='default_template'
+            lakebase.run_write("""
+                INSERT INTO user_custom_exercises 
+                (user_id_hash, program_id, week, exercise_name, sets, reps, intensity, source, is_editable)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'default_template', true)
+            """, (
+                user_hash,
+                program_id,
+                week,
+                ex['exercise_name'],
+                ex['sets'],
+                ex['reps'],
+                float(ex['percentage_1rm'])
+            ))
+
 def generate_workout(user_hash, program_id, week):
     """
     Generate a personalized workout by combining user test results with program template
     and custom exercises.
     
+    NEW APPROACH (2024): All exercises are in user_custom_exercises table.
+    Template exercises are auto-copied with source='default_template' on first access.
+    
     Process:
-    1. Fetch user's 1RM test results (e.g., Bench Press: 80kg × 5 reps)
-    2. Fetch program template for this week (e.g., Week 5: 70% of 1RM)
-    3. Calculate target weight: 1RM × percentage
-       Example: (80 / 0.87) × 0.70 = 64.4kg → rounded to 65kg
-    4. Fetch and merge user's custom exercises
-    5. Return list of exercises with calculated weights, sets, reps
+    1. Copy template exercises to user_custom_exercises if not already there
+    2. Fetch all exercises from user_custom_exercises for this week
+    3. Calculate weights based on test results and intensity %
+    4. Return list of exercises - ALL are editable
     
     Args:
         user_hash (str): SHA-256 hash of user's email
@@ -122,68 +158,84 @@ def generate_workout(user_hash, program_id, week):
         week (int): Week number in program (1-16 for Strength 2.0)
     
     Returns:
-        list[dict]: Workout with calculated weights
-            [{'exercise': 'Bench Press', 'weight_kg': 65.0, 'sets': 4, 'reps': 5, 'is_custom': False}, ...]
+        dict: {
+            'is_test_week': bool,
+            'is_first_test': bool,
+            'exercises': [{'exercise': 'Bench Press', 'weight_kg': 65.0, 'sets': 4, 'reps': 5, ...}]
+        }
     """
+    # Ensure all template exercises are copied to user_custom_exercises
+    copy_template_to_user_exercises(user_hash, program_id, week)
+    
     tests = get_user_tests(user_hash, program_id)
-    template = get_program_template(program_id, week)
+    all_exercises = get_user_custom_exercises(user_hash, program_id, week)
     workout = []
     
-    # Process program exercises
-    for ex in template:
-        if ex['exercise_name'] not in tests:
-            continue  # Skip exercises user hasn't tested
-        test = tests[ex['exercise_name']]
-        
-        # Step 1: Calculate 1RM from test results
-        one_rm = calculate_1rm(test['test_weight'], test['test_reps'])
-        
-        # Step 2: Apply program percentage (e.g., 70% for Week 5)
-        target = one_rm * (float(ex['percentage_1rm']) / 100.0)
-        
-        # Step 3: Round to nearest plate increment
-        step = float(ex['step_size'] or test['step_size'] or 2.5)
-        weight = round_to_step(target, step)
-        
-        workout.append({
-            'exercise': ex['exercise_name'],
-            'weight_kg': weight,
-            'sets': ex['sets'],
-            'reps': ex['reps'],
-            'is_custom': False
-        })
+    # Detect if this is a test week (intensity = 0)
+    is_test_week = all_exercises and float(all_exercises[0].get('intensity') or 0) == 0
+    is_first_test = is_test_week and not tests
     
-    # Add custom exercises
-    custom_exercises = get_user_custom_exercises(user_hash, program_id, week)
-    for custom in custom_exercises:
-        # Calculate weight for custom exercise
-        if custom['weight_override']:
-            # User specified manual weight
-            weight = float(custom['weight_override'])
-        elif custom['intensity'] and custom['exercise_name'] in tests:
-            # Calculate from intensity % and 1RM
-            test = tests[custom['exercise_name']]
-            one_rm = calculate_1rm(test['test_weight'], test['test_reps'])
-            target = one_rm * (float(custom['intensity']) / 100.0)
-            step = float(test['step_size'] or 2.5)
-            weight = round_to_step(target, step)
-        else:
-            # No weight info available
-            weight = '-'
+    # Process all exercises (template + user-added, all from user_custom_exercises)
+    for custom in all_exercises:
+        test = tests.get(custom['exercise_name'])
+        intensity = float(custom.get('intensity') or 0)
         
-        workout.append({
+        # Calculate weight
+        if custom['weight_override']:
+            # User manually specified weight
+            weight = float(custom['weight_override'])
+            note = None
+        elif is_test_week:
+            # TEST WEEK LOGIC
+            if is_first_test:
+                # First test: no baseline, user selects weight
+                weight = None
+                note = 'Select starting weight and perform max reps'
+            elif test:
+                # Regular test: has baseline, suggest 90% of current 1RM
+                one_rm = calculate_1rm(test['test_weight'], test['test_reps'])
+                target = one_rm * 0.90
+                step = float(test.get('step_size') or 2.5)
+                weight = round_to_step(target, step)
+                note = 'Perform as many reps as possible'
+            else:
+                # No baseline for this exercise yet
+                weight = None
+                note = 'Select starting weight and perform max reps'
+        elif intensity > 0 and test:
+            # REGULAR WEEK: Calculate from intensity % and 1RM
+            one_rm = calculate_1rm(test['test_weight'], test['test_reps'])
+            target = one_rm * (intensity / 100.0)
+            step = float(test.get('step_size') or 2.5)
+            weight = round_to_step(target, step)
+            note = None
+        else:
+            # No test results yet for this exercise
+            weight = None
+            note = 'Complete test week first'
+        
+        exercise_data = {
             'exercise': custom['exercise_name'],
             'weight_kg': weight,
             'sets': custom['sets'],
-            'reps': custom['reps'],
-            'is_custom': True,
+            'reps': None if is_test_week else custom['reps'],
+            'is_custom': True,  # ALL exercises are editable now
             'id': custom['id'],
             'notes': custom.get('notes', ''),
             'intensity': custom.get('intensity'),
             'weight_override': custom.get('weight_override')
-        })
+        }
+        
+        if note:
+            exercise_data['note'] = note
+            
+        workout.append(exercise_data)
     
-    return workout
+    return {
+        'is_test_week': is_test_week,
+        'is_first_test': is_first_test,
+        'exercises': workout
+    }
 
 # ========================================
 # THIRD-PARTY API: WGER EXERCISE DATABASE
