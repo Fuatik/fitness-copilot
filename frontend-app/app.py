@@ -6,55 +6,34 @@ import fitness_broker
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-key")
 
-# ---- Onboarding ----
-@app.route("/", methods=["GET", "POST"])
-def onboarding():
-    if request.method == "POST":
-        email = request.form.get("email")
-        user_hash = lakebase.hash_email(email)
-        # Store profile
-        lakebase.run_write("""
-                           INSERT INTO user_profiles (user_id_hash, age, height_cm, weight_kg, experience, limitations)
-                           VALUES (%s, %s, %s, %s, %s, %s)
-                           ON CONFLICT (user_id_hash) DO UPDATE SET
-                                                                    age = EXCLUDED.age,
-                                                                    height_cm = EXCLUDED.height_cm,
-                                                                    weight_kg = EXCLUDED.weight_kg,
-                                                                    experience = EXCLUDED.experience,
-                                                                    limitations = EXCLUDED.limitations
-                           """, (
-                               user_hash,
-                               int(request.form.get("age")),
-                               int(request.form.get("height")),
-                               float(request.form.get("weight")),
-                               request.form.get("experience"),
-                               request.form.get("limitations_desc")
-                           ))
-        # Auto-assign program based on experience and limitations
-        exp = request.form.get("experience")
-        lim = request.form.get("limitations_desc")
-        if lim and ("back" in lim.lower() or "spine" in lim.lower()):
-            prog = lakebase.run_query("SELECT id FROM workout_programs WHERE version = '4.0'")
-        else:
-            mapping = {'beginner': '2.0', 'intermediate': '3.0', 'advanced': '4.0'}
-            version = mapping.get(exp, '2.0')
-            prog = lakebase.run_query("SELECT id FROM workout_programs WHERE version = %s", (version,))
-        if prog:
-            freq = int(request.form.get("frequency", 3))
-            lakebase.run_write("""
-                               INSERT INTO user_programs (user_id_hash, program_id, frequency)
-                               VALUES (%s, %s, %s)
-                               ON CONFLICT (user_id_hash) DO UPDATE SET program_id = EXCLUDED.program_id, frequency = EXCLUDED.frequency
-                               """, (user_hash, prog[0]['id'], freq))
-        return redirect(url_for('dashboard', user_hash=user_hash))
-    return render_template("onboarding.html")
-
-@app.route("/dashboard")
-def dashboard():
-    user_hash = request.args.get('user_hash')
-    if not user_hash:
-        return redirect(url_for('onboarding'))
+@app.route("/")
+def index():
+    user_hash = request.args.get('user_hash', '')
     return render_template("index.html", user_hash=user_hash)
+
+@app.route("/api/recommend_program", methods=["POST"])
+def api_recommend_program():
+    data = request.get_json()
+    experience = data.get('experience', 'beginner')
+    limitations = data.get('limitations', '')
+    
+    # Program recommendation logic
+    if limitations and ('back' in limitations.lower() or 'spine' in limitations.lower()):
+        version = '3.0'  # Intermediate program with back-friendly modifications
+    else:
+        mapping = {'beginner': '2.0', 'intermediate': '3.0', 'advanced': '3.0'}
+        version = mapping.get(experience, '2.0')
+    
+    prog = lakebase.run_query("SELECT id, name, description FROM workout_programs WHERE version = %s", (version,))
+    if not prog:
+        return jsonify({"error": "Program not found"}), 404
+    
+    return jsonify({
+        "program_id": prog[0]['id'],
+        "name": prog[0]['name'],
+        "description": prog[0]['description'],
+        "reasoning": f"Based on your experience ({experience}), this program is best."
+    })
 
 @app.route("/api/workout")
 def api_workout():
@@ -87,6 +66,51 @@ def api_search():
                               LIMIT 10
                               """, (str(vec), str(vec)))
     return jsonify(rows)
+
+@app.route("/api/admin/trigger_embedding_pipeline", methods=["POST"])
+def trigger_embedding_pipeline():
+    """
+    Manually trigger the embedding pipeline job.
+    
+    Use case: After bulk importing exercises, trigger immediate embedding
+    instead of waiting for the scheduled 2 AM run.
+    
+    Usage:
+        curl -X POST http://localhost:8001/api/admin/trigger_embedding_pipeline
+    
+    Returns:
+        JSON with job run info and URL to monitor progress
+    """
+    try:
+        from databricks.sdk import WorkspaceClient
+        w = WorkspaceClient()
+        
+        JOB_ID = 1097796415965621  # Fitness: Daily Exercise Embedding
+        
+        # Check how many exercises need embedding
+        pending = lakebase.run_query(
+            "SELECT COUNT(*) as count FROM exercise_metadata WHERE embedding IS NULL"
+        )
+        pending_count = pending[0]['count'] if pending else 0
+        
+        if pending_count == 0:
+            return jsonify({
+                'status': 'skipped',
+                'message': 'All exercises already have embeddings. Nothing to do.'
+            })
+        
+        # Trigger the job
+        run = w.jobs.run_now(job_id=JOB_ID)
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Embedding pipeline triggered for {pending_count} exercises',
+            'pending_count': pending_count,
+            'run_id': run.run_id,
+            'run_url': f"https://{w.config.host}/#job/{JOB_ID}/run/{run.run_id}"
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.getenv("FLASK_RUN_PORT", 8001))

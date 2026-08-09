@@ -115,10 +115,10 @@ def generate_workout(user_hash, program_id, week):
         one_rm = calculate_1rm(test['test_weight'], test['test_reps'])
         
         # Step 2: Apply program percentage (e.g., 70% for Week 5)
-        target = one_rm * (ex['percentage_1rm'] / 100.0)
+        target = one_rm * (float(ex['percentage_1rm']) / 100.0)
         
         # Step 3: Round to nearest plate increment
-        step = ex['step_size'] or test['step_size'] or 2.5
+        step = float(ex['step_size'] or test['step_size'] or 2.5)
         weight = round_to_step(target, step)
         
         workout.append({
@@ -137,43 +137,137 @@ def generate_workout(user_hash, program_id, week):
 # (muscle groups, equipment) for semantic search and exercise substitution.
 WGER_URL = "https://wger.de/api/v2/exerciseinfo/"
 
+def _insert_exercise_with_embedding(info):
+    """
+    Insert exercise into database with computed embedding.
+    
+    Args:
+        info (dict): Exercise info with keys: name, description, muscles, equipment, instructions, gif_url
+    """
+    from sentence_transformers import SentenceTransformer
+    
+    # Validate required fields
+    if not info.get('name'):
+        raise ValueError("Exercise name is required")
+    
+    # Compute embedding from description and muscle groups
+    text = f"{info['description']} Targets: {', '.join(info.get('muscles', []))}"
+    model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    embedding = model.encode(text).tolist()
+    
+    # Insert/update cache with embedding
+    lakebase.run_write("""
+                       INSERT INTO exercise_metadata (name, description, muscles, equipment, instructions, gif_url, embedding)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s::vector)
+                       ON CONFLICT (name) DO UPDATE SET
+                                                        description = EXCLUDED.description,
+                                                        muscles = EXCLUDED.muscles,
+                                                        equipment = EXCLUDED.equipment,
+                                                        instructions = EXCLUDED.instructions,
+                                                        gif_url = EXCLUDED.gif_url,
+                                                        embedding = EXCLUDED.embedding
+                       """, (info['name'], info['description'], info['muscles'], info['equipment'], 
+                             info['instructions'], info['gif_url'], str(embedding)))
+
+# FALLBACK: Manual knowledge base for common exercises not in WGER
+MANUAL_EXERCISES = {
+    'Hyperextension': {
+        'name': 'Hyperextension',
+        'description': 'Back extension exercise targeting lower back, glutes, and hamstrings. Performed on a hyperextension bench.',
+        'muscles': ['Erector spinae', 'Gluteus maximus', 'Hamstrings'],
+        'equipment': ['Hyperextension bench'],
+        'instructions': 'Position yourself on the hyperextension bench with ankles secured. Lower your torso by bending at the waist. Raise back up to starting position.',
+        'gif_url': ''
+    },
+    'Back Extension': {
+        'name': 'Back Extension',
+        'description': 'Lower back strengthening exercise targeting erector spinae muscles.',
+        'muscles': ['Erector spinae', 'Gluteus maximus'],
+        'equipment': ['Hyperextension bench'],
+        'instructions': 'Lie face down on hyperextension bench. Lower torso down, then extend back up.',
+        'gif_url': ''
+    },
+    'Leg Press': {
+        'name': 'Leg Press',
+        'description': 'Compound lower body exercise targeting quadriceps, glutes, and hamstrings. Performed on a leg press machine.',
+        'muscles': ['Quadriceps femoris', 'Gluteus maximus', 'Hamstrings'],
+        'equipment': ['Leg press machine'],
+        'instructions': 'Sit on the leg press machine with feet shoulder-width apart on the platform. Push the platform away by extending your legs, then return to starting position with controlled motion.',
+        'gif_url': ''
+    },
+    'Chest Press Machine': {
+        'name': 'Chest Press Machine',
+        'description': 'Machine-based chest exercise targeting pectorals, shoulders, and triceps. Safer alternative to barbell bench press.',
+        'muscles': ['Pectoralis major', 'Anterior deltoid', 'Triceps brachii'],
+        'equipment': ['Chest press machine'],
+        'instructions': 'Sit on the chest press machine with back against pad. Grip handles at chest level. Push handles forward until arms are extended, then return to starting position with control.',
+        'gif_url': ''
+    },
+    'Dumbbell Bench Press': {
+        'name': 'Dumbbell Bench Press',
+        'description': 'Chest exercise using dumbbells instead of a barbell. Allows greater range of motion and muscle activation.',
+        'muscles': ['Pectoralis major', 'Anterior deltoid', 'Triceps brachii'],
+        'equipment': ['Dumbbells', 'Bench'],
+        'instructions': 'Lie on bench holding dumbbells at chest level. Press dumbbells up until arms are extended. Lower with control back to chest level.',
+        'gif_url': ''
+    },
+    'Push-ups': {
+        'name': 'Push-ups',
+        'description': 'Classic bodyweight chest exercise targeting pectorals, shoulders, and triceps. No equipment required.',
+        'muscles': ['Pectoralis major', 'Anterior deltoid', 'Triceps brachii'],
+        'equipment': ['none (bodyweight exercise)'],
+        'instructions': 'Start in plank position with hands shoulder-width apart. Lower your body until chest nearly touches the floor. Push back up to starting position.',
+        'gif_url': ''
+    },
+    'Dips': {
+        'name': 'Dips',
+        'description': 'Bodyweight exercise targeting chest, shoulders, and triceps. Can be performed on parallel bars or bench.',
+        'muscles': ['Pectoralis major', 'Anterior deltoid', 'Triceps brachii'],
+        'equipment': ['Dip bars or bench'],
+        'instructions': 'Support yourself on parallel bars with arms straight. Lower your body by bending elbows until shoulders are below elbows. Push back up to starting position.',
+        'gif_url': ''
+    }
+}
+
 def fetch_exercise_info(exercise_name):
     # Check cache first
     cached = lakebase.run_query("SELECT * FROM exercise_metadata WHERE name = %s", (exercise_name,))
     if cached:
         return cached[0]
 
+    # Check manual knowledge base
+    if exercise_name in MANUAL_EXERCISES:
+        info = MANUAL_EXERCISES[exercise_name]
+        _insert_exercise_with_embedding(info)
+        return info
+
+    # Try WGER API
     url = WGER_URL
     params = {"language": 2, "name": exercise_name}
-    resp = requests.get(url, params=params, timeout=10)
-    if resp.status_code != 200:
-        return {"error": "API request failed"}
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json().get('results', [])
+            if data:
+                item = data[0]
+                # Validate name before processing
+                if not item.get('name'):
+                    return {"error": "Exercise found but has no name"}
+                
+                info = {
+                    'name': item.get('name'),
+                    'description': item.get('description') or "",
+                    'muscles': [m['name'] for m in item.get('muscles', [])],
+                    'equipment': [e['name'] for e in item.get('equipment', [])],
+                    'instructions': item.get('instructions', ""),
+                    'gif_url': item.get('image', [{}])[0].get('image') if item.get('image') else ""
+                }
+                _insert_exercise_with_embedding(info)
+                return info
+    except Exception as e:
+        pass  # Fall through to error case
 
-    data = resp.json().get('results', [])
-    if not data:
-        return {"error": "Exercise not found"}
-
-    item = data[0]
-    info = {
-        'name': item.get('name'),
-        'description': item.get('description') or "",
-        'muscles': [m['name'] for m in item.get('muscles', [])],
-        'equipment': [e['name'] for e in item.get('equipment', [])],
-        'instructions': item.get('instructions', ""),
-        'gif_url': item.get('image', [{}])[0].get('image') if item.get('image') else ""
-    }
-    # Insert/update cache
-    lakebase.run_write("""
-                       INSERT INTO exercise_metadata (name, description, muscles, equipment, instructions, gif_url)
-                       VALUES (%s, %s, %s, %s, %s, %s)
-                       ON CONFLICT (name) DO UPDATE SET
-                                                        description = EXCLUDED.description,
-                                                        muscles = EXCLUDED.muscles,
-                                                        equipment = EXCLUDED.equipment,
-                                                        instructions = EXCLUDED.instructions,
-                                                        gif_url = EXCLUDED.gif_url
-                       """, (info['name'], info['description'], info['muscles'], info['equipment'], info['instructions'], info['gif_url']))
-    return info
+    return {"error": f"Exercise '{exercise_name}' not found in database or WGER API"}
 
 # ========================================
 # CUSTOMIZATION TOOLS WITH SAFETY GUARDRAILS
@@ -247,8 +341,8 @@ def adjust_intensity(user_hash, program_id, exercise, change_percent):
     if not rows:
         return {"error": "Exercise not found in program"}
     
-    current = rows[0]['percentage_1rm']
-    new_pct = current + change_percent
+    current = float(rows[0]['percentage_1rm'])  # Convert Decimal to float
+    new_pct = current + float(change_percent)
     
     # GUARDRAIL: Enforce safe intensity bounds
     if new_pct > 110:

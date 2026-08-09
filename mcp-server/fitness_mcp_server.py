@@ -62,7 +62,20 @@ def assign_program(user_hash: str, program_id: int, frequency: int) -> dict:
 @mcp.tool
 def get_workout(user_hash: str, week: int = None) -> dict:
     """
-    Get the workout for a specific week (or current week). user_hash can be email or pre-hashed value.
+    Get the personalized workout for a specific week with calculated weights.
+    Applies user test data, exercise replacements, and intensity adjustments.
+    
+    Args:
+        user_hash: User email or hash
+        week: Week number (1-16), defaults to current week if not specified
+    
+    Returns:
+        Week number and list of exercises with sets, reps, and calculated weight in kg
+        
+    Note:
+        - Weights are calculated from your test results (1RM estimates)
+        - Any exercise replacements you've made will appear here
+        - Intensity adjustments are reflected in the calculated weights
     """
     # If user_hash looks like an email, hash it
     if '@' in user_hash:
@@ -70,12 +83,39 @@ def get_workout(user_hash: str, week: int = None) -> dict:
     
     prog = lakebase.run_query("SELECT program_id, current_week FROM user_programs WHERE user_id_hash = %s", (user_hash,))
     if not prog:
-        return {"error": "No program assigned"}
+        return {
+            "error": "No program assigned",
+            "hint": "You need to complete the program recommendation and assignment first. Please describe your experience level and any limitations."
+        }
+    
     program_id = prog[0]['program_id']
     current_week = prog[0]['current_week'] or 1
     week = week or current_week
-    exercises = fitness_broker.generate_workout(user_hash, program_id, week)
-    return {"week": week, "exercises": exercises}
+    
+    # Validate week range
+    if week < 1 or week > 16:
+        return {
+            "error": f"Week {week} is out of range",
+            "hint": "Please specify a week between 1 and 16."
+        }
+    
+    try:
+        exercises = fitness_broker.generate_workout(user_hash, program_id, week)
+        
+        if not exercises:
+            return {
+                "error": "No workout generated",
+                "hint": "You may need to complete test lifts for the exercises in this program. Test lifts establish your baseline strength for calculating working weights."
+            }
+        
+        return {
+            "week": week,
+            "exercises": exercises,
+            "note": f"Week {week} workout ready. Weights are calculated from your 1RM estimates. Rest 60-90 seconds between sets."
+        }
+    except Exception as e:
+        logger.error(f"get_workout error: {e}")
+        return {"error": f"Failed to generate workout: {str(e)}"}
 
 @mcp.tool
 def log_workout(user_hash: str, exercise: str, weight: float, reps: int) -> dict:
@@ -106,15 +146,42 @@ def replace_exercise(user_hash: str, old: str, new: str, reason: str) -> dict:
 
 @mcp.tool
 def adjust_intensity(user_hash: str, exercise: str, change_percent: float) -> dict:
-    """Adjust the weight percentage for an exercise. user_hash can be email or pre-hashed value."""
+    """
+    Adjust the intensity (% of 1RM) for an exercise with safety bounds (50-110%).
+    
+    Args:
+        user_hash: User email or hash
+        exercise: Exercise name (use ORIGINAL name from program template, not replacement)
+        change_percent: Adjustment amount (positive to increase, negative to decrease)
+    
+    Returns:
+        Success message with new percentage, or error if out of bounds
+    
+    Safety limits:
+        - Maximum 110% of 1RM (prevents injury/failure)
+        - Minimum 50% of 1RM (ensures strength stimulus)
+    
+    Note:
+        If you replaced an exercise (e.g., Bench Press → Chest Press Machine),
+        still use the ORIGINAL name "Bench Press" for intensity adjustments.
+    """
     # If user_hash looks like an email, hash it
     if '@' in user_hash:
         user_hash = lakebase.hash_email(user_hash)
     
     prog = lakebase.run_query("SELECT program_id FROM user_programs WHERE user_id_hash = %s", (user_hash,))
     if not prog:
-        return {"error": "No program"}
-    return fitness_broker.adjust_intensity(user_hash, prog[0]['program_id'], exercise, change_percent)
+        return {"error": "No program assigned to this user."}
+    
+    result = fitness_broker.adjust_intensity(user_hash, prog[0]['program_id'], exercise, change_percent)
+    
+    # Enhanced error messages
+    if 'error' in result:
+        error_msg = result['error']
+        if "not found" in error_msg.lower():
+            result['hint'] = f"Make sure to use the original exercise name from your program. If you replaced '{exercise}' with something else, you still need to use '{exercise}' for intensity adjustments."
+    
+    return result
 
 @mcp.tool
 def get_exercise_details(exercise_name: str) -> dict:
@@ -123,19 +190,48 @@ def get_exercise_details(exercise_name: str) -> dict:
 
 @mcp.tool
 def search_exercises(query: str) -> list:
-    """Semantic search over exercise descriptions (uses embeddings)."""
-    from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-    vec = model.encode(query).tolist()
-    rows = lakebase.run_query("""
-                              SELECT name, description,
-                                     1 - (embedding <=> %s::vector) AS similarity
-                              FROM exercise_metadata
-                              WHERE embedding IS NOT NULL
-                              ORDER BY embedding <=> %s::vector
-                              LIMIT 10
-                              """, (str(vec), str(vec)))
-    return rows
+    """
+    Semantic search over exercise descriptions (uses embeddings).
+    Returns exercises ranked by similarity to the query.
+    
+    Args:
+        query: Natural language description (e.g., "chest exercises", "bodyweight back", "machine alternatives")
+    
+    Returns:
+        List of exercises with name, description, muscles, equipment, and similarity score
+    """
+    try:
+        from sentence_transformers import SentenceTransformer
+        model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+        vec = model.encode(query).tolist()
+        
+        rows = lakebase.run_query("""
+                                  SELECT name, description, muscles, equipment,
+                                         1 - (embedding <=> %s::vector) AS similarity
+                                  FROM exercise_metadata
+                                  WHERE embedding IS NOT NULL
+                                  ORDER BY embedding <=> %s::vector
+                                  LIMIT 10
+                                  """, (str(vec), str(vec)))
+        
+        if not rows:
+            return [{"error": f"No exercises found matching '{query}'"}]
+        
+        # Convert Decimal similarity scores to float for JSON serialization
+        result = []
+        for row in rows:
+            result.append({
+                'name': row['name'],
+                'description': row['description'],
+                'muscles': row.get('muscles', []),
+                'equipment': row.get('equipment', []),
+                'similarity': float(row['similarity'])
+            })
+        
+        return result
+    except Exception as e:
+        logger.error(f"search_exercises error: {e}")
+        return [{"error": f"Search failed: {str(e)}"}]
 
 if __name__ == "__main__":
     if hasattr(mcp, 'app') and mcp.app is not None:

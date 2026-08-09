@@ -23,10 +23,10 @@ def get_coefficient(reps):
     Raises:
         ValueError: If no coefficient exists for the given rep count
     """
-    row = lakebase.run_query("SELECT percentage FROM coefficients WHERE reps = %s", (reps,))
+    row = lakebase.run_query("SELECT percentage FROM coefficients WHERE reps = %s", (int(reps),))
     if not row:
         raise ValueError(f"No coefficient for {reps} reps")
-    return float(row[0]['percentage']) / 100.0
+    return float(row[0]['percentage']) / 100.0  # Convert Decimal to float
 
 def calculate_1rm(weight, reps):
     """
@@ -42,7 +42,7 @@ def calculate_1rm(weight, reps):
     Returns:
         float: Estimated 1RM in kg
     """
-    return float(weight) / get_coefficient(reps)
+    return float(weight) / get_coefficient(int(reps))
 
 def round_to_step(value, step=2.5):
     """
@@ -58,7 +58,7 @@ def round_to_step(value, step=2.5):
     Returns:
         float: Rounded weight
     """
-    return round(value / step) * step
+    return round(float(value) / float(step)) * float(step)
 
 # ========================================
 # PROGRAM & USER DATA HELPERS
@@ -186,6 +186,30 @@ MANUAL_EXERCISES = {
         'equipment': ['Hyperextension bench'],
         'instructions': 'Lie face down on hyperextension bench. Lower torso down, then extend back up.',
         'gif_url': ''
+    },
+    'Leg Press': {
+        'name': 'Leg Press',
+        'description': 'Compound lower body exercise targeting quadriceps, glutes, and hamstrings. Performed on a leg press machine.',
+        'muscles': ['Quadriceps femoris', 'Gluteus maximus', 'Hamstrings'],
+        'equipment': ['Leg press machine'],
+        'instructions': 'Sit on the leg press machine with feet shoulder-width apart on the platform. Push the platform away by extending your legs, then return to starting position with controlled motion.',
+        'gif_url': ''
+    },
+    'Chest Press Machine': {
+        'name': 'Chest Press Machine',
+        'description': 'Machine-based chest exercise targeting pectorals, shoulders, and triceps. Safer alternative to barbell bench press.',
+        'muscles': ['Pectoralis major', 'Anterior deltoid', 'Triceps brachii'],
+        'equipment': ['Chest press machine'],
+        'instructions': 'Sit on the chest press machine with back against pad. Grip handles at chest level. Push handles forward until arms are extended, then return to starting position with control.',
+        'gif_url': ''
+    },
+    'Dumbbell Bench Press': {
+        'name': 'Dumbbell Bench Press',
+        'description': 'Chest exercise using dumbbells instead of a barbell. Allows greater range of motion and muscle activation.',
+        'muscles': ['Pectoralis major', 'Anterior deltoid', 'Triceps brachii'],
+        'equipment': ['Dumbbells', 'Bench'],
+        'instructions': 'Lie on bench holding dumbbells at chest level. Press dumbbells up until arms are extended. Lower with control back to chest level.',
+        'gif_url': ''
     }
 }
 
@@ -301,8 +325,8 @@ def adjust_intensity(user_hash, program_id, exercise, change_percent):
     if not rows:
         return {"error": "Exercise not found in program"}
     
-    current = rows[0]['percentage_1rm']
-    new_pct = current + change_percent
+    current = float(rows[0]['percentage_1rm'])  # Convert Decimal to float
+    new_pct = current + float(change_percent)
     
     # GUARDRAIL: Enforce safe intensity bounds
     if new_pct > 110:
