@@ -1,96 +1,813 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-    <title>My Program</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitness Copilot</title>
     <style>
-        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 8px; border-bottom: 1px solid #ddd; text-align: left; }
-        .exercise-link { color: #2563eb; cursor: pointer; text-decoration: underline; }
-        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; }
-        .modal-content { background: white; padding: 20px; border-radius: 8px; max-width: 600px; width: 100%; }
-        .close { float: right; cursor: pointer; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1e40af;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-900: #111827;
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: var(--gray-900);
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: var(--shadow-lg);
+            margin-bottom: 24px;
+        }
+
+        .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 32px;
+            position: relative;
+        }
+
+        .progress-steps::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--gray-200);
+            z-index: 0;
+        }
+
+        .step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--gray-200);
+            color: var(--gray-600);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .step.active .step-number {
+            background: var(--primary);
+            color: white;
+        }
+
+        .step.completed .step-number {
+            background: var(--success);
+            color: white;
+        }
+
+        .step-label {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+            font-weight: 500;
+        }
+
+        .step.active .step-label {
+            color: var(--primary);
+        }
+
+        .step.completed .step-label {
+            color: var(--success);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--gray-700);
+            font-size: 0.95rem;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid var(--gray-200);
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow);
+        }
+
+        .btn-secondary {
+            background: var(--gray-200);
+            color: var(--gray-700);
+        }
+
+        .btn-secondary:hover {
+            background: var(--gray-300);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .program-summary {
+            background: var(--gray-50);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .program-summary h3 {
+            color: var(--primary);
+            margin-bottom: 12px;
+        }
+
+        .program-summary p {
+            color: var(--gray-600);
+            line-height: 1.6;
+        }
+
+        .test-week-banner {
+            background: linear-gradient(135deg, var(--warning) 0%, var(--danger) 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+        }
+
+        .test-week-banner h3 {
+            margin-bottom: 8px;
+        }
+
+        .test-week-banner p {
+            opacity: 0.95;
+            line-height: 1.5;
+        }
+
+        .week-selector {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .week-btn {
+            padding: 8px 16px;
+            border: 2px solid var(--gray-300);
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .week-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .week-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .workout-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .workout-table thead {
+            background: var(--gray-100);
+        }
+
+        .workout-table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--gray-700);
+            border-bottom: 2px solid var(--gray-300);
+        }
+
+        .workout-table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .workout-table tbody tr:hover {
+            background: var(--gray-50);
+        }
+
+        .exercise-link {
+            color: var(--primary);
+            cursor: pointer;
+            text-decoration: underline;
+            font-weight: 500;
+        }
+
+        .exercise-link:hover {
+            color: var(--primary-dark);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 32px;
+            border-radius: 16px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .close {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            font-size: 28px;
+            cursor: pointer;
+            color: var(--gray-600);
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background 0.2s;
+        }
+
+        .close:hover {
+            background: var(--gray-100);
+        }
+
+        .modal-content h2 {
+            margin-bottom: 20px;
+            color: var(--gray-900);
+        }
+
+        .modal-content img {
+            max-width: 100%;
+            border-radius: 12px;
+            margin-top: 16px;
+        }
+
+        .info-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: var(--gray-100);
+            border-radius: 16px;
+            font-size: 0.875rem;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--gray-600);
+        }
+
+        .empty-state h3 {
+            margin-bottom: 12px;
+            color: var(--gray-700);
+        }
+
+        .alert {
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .alert-warning {
+            background: #fef3c7;
+            color: #92400e;
+            border-left: 4px solid var(--warning);
+        }
+
+        .test-input-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr;
+            gap: 12px;
+            align-items: end;
+            margin-bottom: 12px;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .card {
+                padding: 20px;
+            }
+
+            .progress-steps {
+                font-size: 0.8rem;
+            }
+
+            .step-number {
+                width: 32px;
+                height: 32px;
+                font-size: 0.9rem;
+            }
+
+            .test-input-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
-<h1>Your Training Plan</h1>
-<div id="workout"></div>
-<p><input type="text" id="searchBox" placeholder="Search exercises (e.g., chest without equipment)" style="width: 70%;">
-    <button onclick="searchExercises()">Search</button>
-</p>
-<div id="searchResults"></div>
+    <div class="container">
+        <div class="header">
+            <h1>💪 Fitness Copilot</h1>
+            <p>Your personalized strength training program</p>
+        </div>
 
-<!-- Modal -->
-<div id="exerciseModal" class="modal">
-    <div class="modal-content">
-        <span class="close" onclick="closeModal()">&times;</span>
-        <h2 id="ex-name"></h2>
-        <p><strong>Muscles:</strong> <span id="ex-muscles"></span></p>
-        <p><strong>Equipment:</strong> <span id="ex-equipment"></span></p>
-        <p><strong>Instructions:</strong></p>
-        <p id="ex-instructions"></p>
-        <img id="ex-gif" src="" alt="Exercise GIF" style="max-width: 100%;">
+        <!-- Step 1: Onboarding -->
+        <div id="step-onboarding" class="card">
+            <div class="progress-steps">
+                <div class="step active">
+                    <div class="step-number">1</div>
+                    <div class="step-label">Profile</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-label">Test Week</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-label">Train</div>
+                </div>
+            </div>
+
+            <h2 style="margin-bottom: 24px; color: var(--gray-900);">Start Your Journey</h2>
+            
+            <form id="onboarding-form">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required placeholder="your@email.com">
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label for="age">Age</label>
+                        <input type="number" id="age" name="age" required placeholder="25">
+                    </div>
+                    <div class="form-group">
+                        <label for="height">Height (cm)</label>
+                        <input type="number" id="height" name="height" required placeholder="175">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="weight">Weight (kg)</label>
+                    <input type="number" id="weight" name="weight" step="0.1" required placeholder="75.5">
+                </div>
+
+                <div class="form-group">
+                    <label for="experience">Training Experience</label>
+                    <select id="experience" name="experience">
+                        <option value="beginner">Beginner (< 6 months)</option>
+                        <option value="intermediate">Intermediate (6 months - 2 years)</option>
+                        <option value="advanced">Advanced (2+ years)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="frequency">Days per Week</label>
+                    <select id="frequency" name="frequency">
+                        <option value="2">2 days</option>
+                        <option value="3" selected>3 days</option>
+                        <option value="4">4 days</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="limitations">Injuries or Limitations (optional)</label>
+                    <input type="text" id="limitations" name="limitations" placeholder="e.g., lower back pain">
+                </div>
+
+                <div class="alert alert-warning">
+                    🔒 Your email is hashed and stored securely. No raw PII is saved.
+                </div>
+
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Generate My Program</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Step 2: Test Week -->
+        <div id="step-test-week" class="card hidden">
+            <div class="progress-steps">
+                <div class="step completed">
+                    <div class="step-number">✓</div>
+                    <div class="step-label">Profile</div>
+                </div>
+                <div class="step active">
+                    <div class="step-number">2</div>
+                    <div class="step-label">Test Week</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-label">Train</div>
+                </div>
+            </div>
+
+            <div class="program-summary">
+                <h3 id="program-name"></h3>
+                <p id="program-description"></p>
+            </div>
+
+            <div class="test-week-banner">
+                <h3>📊 Test Week Required</h3>
+                <p>Before starting, you need to complete test week to establish your baseline strength. Perform each exercise with a challenging weight for 5 reps (leaving 2 reps in reserve).</p>
+            </div>
+
+            <div id="test-inputs"></div>
+
+            <div class="btn-group">
+                <button onclick="goBackToOnboarding()" class="btn btn-secondary">Back</button>
+                <button onclick="saveTestResults()" class="btn btn-success" style="flex: 1;">Save & Continue</button>
+            </div>
+        </div>
+
+        <!-- Step 3: My Program -->
+        <div id="step-program" class="card hidden">
+            <div class="progress-steps">
+                <div class="step completed">
+                    <div class="step-number">✓</div>
+                    <div class="step-label">Profile</div>
+                </div>
+                <div class="step completed">
+                    <div class="step-number">✓</div>
+                    <div class="step-label">Test Week</div>
+                </div>
+                <div class="step active">
+                    <div class="step-number">3</div>
+                    <div class="step-label">Train</div>
+                </div>
+            </div>
+
+            <h2 style="margin-bottom: 8px; color: var(--gray-900);">My Program</h2>
+            <p style="color: var(--gray-600); margin-bottom: 24px;" id="program-subtitle"></p>
+
+            <div class="week-selector" id="week-selector"></div>
+
+            <div id="workout-container"></div>
+        </div>
     </div>
-</div>
 
-<script>
-    const hash = new URLSearchParams(location.search).get('user_hash');
+    <!-- Exercise Details Modal -->
+    <div id="exerciseModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="ex-name"></h2>
+            <div style="margin-bottom: 16px;">
+                <span class="info-badge" id="ex-muscles"></span>
+                <span class="info-badge" id="ex-equipment"></span>
+            </div>
+            <h4 style="margin-bottom: 12px; color: var(--gray-700);">Instructions</h4>
+            <p id="ex-instructions" style="line-height: 1.6; color: var(--gray-600);"></p>
+            <img id="ex-gif" src="" alt="Exercise demonstration">
+        </div>
+    </div>
 
-    async function loadWorkout(week = 1) {
-        const resp = await fetch(`/api/workout?user_hash=${hash}&week=${week}`);
-        const data = await resp.json();
-        if (data.error) {
-            document.getElementById('workout').innerHTML = `<p>No program assigned yet.</p>`;
-            return;
-        }
-        let html = `<h3>Week ${data.week}</h3><table><tr><th>Exercise</th><th>Weight (kg)</th><th>Sets</th><th>Reps</th><th>Info</th></tr>`;
-        data.exercises.forEach(ex => {
-            html += `<tr>
-          <td>${ex.exercise}</td>
-          <td>${ex.weight_kg}</td>
-          <td>${ex.sets}</td>
-          <td>${ex.reps}</td>
-          <td><span class="exercise-link" onclick="showExercise('${ex.exercise}')">How to do it</span></td>
-        </tr>`;
+    <script>
+        let userHash = null;
+        let currentWeek = 1;
+        let programInfo = null;
+        const exercises = [
+            'Bench Press',
+            'Back Squat',
+            'Bent Over Row',
+            'Deadlift',
+            'Seated Dumbbell Press',
+            'Lat Pulldown'
+        ];
+
+        // Step 1: Submit onboarding
+        document.getElementById('onboarding-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData);
+            
+            try {
+                // Get program recommendation
+                const recommResp = await fetch('/api/recommend_program', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        experience: data.experience,
+                        goal: 'strength',
+                        limitations: data.limitations || ''
+                    })
+                });
+                const program = await recommResp.json();
+                programInfo = program;
+                
+                // Assign program
+                userHash = btoa(data.email); // Simple hash for demo
+                await fetch('/api/assign_program', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_hash: data.email,
+                        program_id: program.program_id,
+                        frequency: parseInt(data.frequency)
+                    })
+                });
+                
+                // Show test week step
+                showTestWeekStep();
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
         });
-        html += '</table>';
-        document.getElementById('workout').innerHTML = html;
-    }
 
-    async function showExercise(name) {
-        const resp = await fetch(`/api/exercise/${encodeURIComponent(name)}`);
-        const data = await resp.json();
-        if (data.error) {
-            alert('Exercise details not found.');
-            return;
+        function showTestWeekStep() {
+            document.getElementById('step-onboarding').classList.add('hidden');
+            document.getElementById('step-test-week').classList.remove('hidden');
+            
+            document.getElementById('program-name').textContent = programInfo.name;
+            document.getElementById('program-description').textContent = programInfo.description;
+            
+            // Create test input fields
+            const container = document.getElementById('test-inputs');
+            container.innerHTML = exercises.map(ex => `
+                <div class="test-input-grid">
+                    <div class="form-group">
+                        <label>${ex}</label>
+                        <input type="text" value="${ex}" disabled style="background: var(--gray-100);">
+                    </div>
+                    <div class="form-group">
+                        <label>Weight (kg)</label>
+                        <input type="number" step="0.5" id="weight-${ex.replace(/\s/g, '-')}" placeholder="80" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Reps</label>
+                        <input type="number" id="reps-${ex.replace(/\s/g, '-')}" value="5" required>
+                    </div>
+                </div>
+            `).join('');
         }
-        document.getElementById('ex-name').textContent = data.name;
-        document.getElementById('ex-muscles').textContent = data.muscles ? data.muscles.join(', ') : 'N/A';
-        document.getElementById('ex-equipment').textContent = data.equipment ? data.equipment.join(', ') : 'N/A';
-        document.getElementById('ex-instructions').textContent = data.instructions || 'No instructions available.';
-        document.getElementById('ex-gif').src = data.gif_url || '';
-        document.getElementById('exerciseModal').style.display = 'flex';
-    }
 
-    function closeModal() {
-        document.getElementById('exerciseModal').style.display = 'none';
-    }
+        async function saveTestResults() {
+            const email = document.getElementById('email').value;
+            
+            // Save test results for each exercise
+            for (const ex of exercises) {
+                const weight = document.getElementById(`weight-${ex.replace(/\s/g, '-')}`).value;
+                const reps = document.getElementById(`reps-${ex.replace(/\s/g, '-')}`).value;
+                
+                if (!weight || !reps) {
+                    alert(`Please enter test results for ${ex}`);
+                    return;
+                }
+                
+                await fetch('/api/enter_test_results', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_hash: email,
+                        exercise: ex,
+                        weight: parseFloat(weight),
+                        reps: parseInt(reps),
+                        step_size: 2.5
+                    })
+                });
+            }
+            
+            // Show program step
+            showProgramStep();
+        }
 
-    async function searchExercises() {
-        const query = document.getElementById('searchBox').value.trim();
-        if (!query) return;
-        const resp = await fetch(`/api/search_exercises?q=${encodeURIComponent(query)}`);
-        const results = await resp.json();
-        let html = '<h4>Search Results</h4><ul>';
-        results.forEach(r => {
-            html += `<li><strong>${r.name}</strong> (similarity: ${(r.similarity * 100).toFixed(1)}%)<br>${r.description}</li>`;
+        function showProgramStep() {
+            document.getElementById('step-test-week').classList.add('hidden');
+            document.getElementById('step-program').classList.remove('hidden');
+            
+            document.getElementById('program-subtitle').textContent = programInfo.name;
+            
+            // Create week selector
+            const weekSelector = document.getElementById('week-selector');
+            weekSelector.innerHTML = '';
+            for (let i = 1; i <= 7; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = `Week ${i}`;
+                btn.className = 'week-btn' + (i === 1 ? ' active' : '');
+                btn.onclick = () => loadWorkout(i);
+                weekSelector.appendChild(btn);
+            }
+            
+            loadWorkout(1);
+        }
+
+        async function loadWorkout(week) {
+            currentWeek = week;
+            const email = document.getElementById('email').value;
+            
+            // Update active week button
+            document.querySelectorAll('.week-btn').forEach((btn, i) => {
+                btn.classList.toggle('active', i + 1 === week);
+            });
+            
+            try {
+                const resp = await fetch(`/api/workout?user_hash=${email}&week=${week}`);
+                const data = await resp.json();
+                
+                const container = document.getElementById('workout-container');
+                
+                if (data.error || !data.exercises || data.exercises.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <h3>No workout data</h3>
+                            <p>Please complete test week first or check your program assignment.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = `
+                    <table class="workout-table">
+                        <thead>
+                            <tr>
+                                <th>Exercise</th>
+                                <th>Weight (kg)</th>
+                                <th>Sets</th>
+                                <th>Reps</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                data.exercises.forEach(ex => {
+                    html += `
+                        <tr>
+                            <td><strong>${ex.exercise}</strong></td>
+                            <td>${ex.weight_kg}</td>
+                            <td>${ex.sets}</td>
+                            <td>${ex.reps}</td>
+                            <td><span class="exercise-link" onclick="showExercise('${ex.exercise}')">How to do it</span></td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table>';
+                container.innerHTML = html;
+                
+            } catch (error) {
+                alert('Error loading workout: ' + error.message);
+            }
+        }
+
+        async function showExercise(name) {
+            try {
+                const resp = await fetch(`/api/exercise/${encodeURIComponent(name)}`);
+                const data = await resp.json();
+                
+                if (data.error) {
+                    alert('Exercise details not found.');
+                    return;
+                }
+                
+                document.getElementById('ex-name').textContent = data.name || name;
+                document.getElementById('ex-muscles').textContent = '🎯 ' + (data.muscles ? data.muscles.join(', ') : 'N/A');
+                document.getElementById('ex-equipment').textContent = '🏋️ ' + (data.equipment ? data.equipment.join(', ') : 'N/A');
+                document.getElementById('ex-instructions').textContent = data.instructions || 'No instructions available.';
+                document.getElementById('ex-gif').src = data.gif_url || '';
+                document.getElementById('ex-gif').style.display = data.gif_url ? 'block' : 'none';
+                
+                document.getElementById('exerciseModal').classList.add('show');
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('exerciseModal').classList.remove('show');
+        }
+
+        function goBackToOnboarding() {
+            document.getElementById('step-test-week').classList.add('hidden');
+            document.getElementById('step-onboarding').classList.remove('hidden');
+        }
+
+        // Close modal on outside click
+        document.getElementById('exerciseModal').addEventListener('click', (e) => {
+            if (e.target.id === 'exerciseModal') {
+                closeModal();
+            }
         });
-        html += '</ul>';
-        document.getElementById('searchResults').innerHTML = html;
-    }
-
-    // Load week 1 by default
-    loadWorkout(1);
-</script>
+    </script>
 </body>
 </html>

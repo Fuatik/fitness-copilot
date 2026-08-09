@@ -34,8 +34,9 @@ def get_program_recommendation(experience: str, goal: str, limitations: str = ""
         prog = lakebase.run_query("SELECT id, name, description FROM workout_programs WHERE version = '4.0'")
         reasoning = "No-Axial-Load Program is recommended to protect your spine."
     else:
-        mapping = {'beginner': '2.0', 'intermediate': '3.0', 'advanced': '4.0'}
-        version = mapping.get(experience.lower(), '2.0')
+        # Fixed mapping: beginner → 3.0 (easier), intermediate/advanced → 2.0 (harder)
+        mapping = {'beginner': '3.0', 'intermediate': '2.0', 'advanced': '2.0'}
+        version = mapping.get(experience.lower(), '3.0')
         prog = lakebase.run_query("SELECT id, name, description FROM workout_programs WHERE version = %s", (version,))
         reasoning = f"Based on your experience ({experience}), this program is best."
     if not prog:
@@ -45,8 +46,12 @@ def get_program_recommendation(experience: str, goal: str, limitations: str = ""
 @mcp.tool
 def assign_program(user_hash: str, program_id: int, frequency: int) -> dict:
     """
-    Assign a program to the user.
+    Assign a program to the user. user_hash can be email or pre-hashed value.
     """
+    # If user_hash looks like an email, hash it
+    if '@' in user_hash:
+        user_hash = lakebase.hash_email(user_hash)
+    
     lakebase.run_write("""
                        INSERT INTO user_programs (user_id_hash, program_id, frequency)
                        VALUES (%s, %s, %s)
@@ -57,8 +62,12 @@ def assign_program(user_hash: str, program_id: int, frequency: int) -> dict:
 @mcp.tool
 def get_workout(user_hash: str, week: int = None) -> dict:
     """
-    Get the workout for a specific week (or current week).
+    Get the workout for a specific week (or current week). user_hash can be email or pre-hashed value.
     """
+    # If user_hash looks like an email, hash it
+    if '@' in user_hash:
+        user_hash = lakebase.hash_email(user_hash)
+    
     prog = lakebase.run_query("SELECT program_id, current_week FROM user_programs WHERE user_id_hash = %s", (user_hash,))
     if not prog:
         return {"error": "No program assigned"}
@@ -71,8 +80,12 @@ def get_workout(user_hash: str, week: int = None) -> dict:
 @mcp.tool
 def log_workout(user_hash: str, exercise: str, weight: float, reps: int) -> dict:
     """
-    Log a completed set.
+    Log a completed set. user_hash can be email or pre-hashed value.
     """
+    # If user_hash looks like an email, hash it
+    if '@' in user_hash:
+        user_hash = lakebase.hash_email(user_hash)
+    
     lakebase.run_write("""
                        INSERT INTO user_workouts (user_id_hash, exercise_name, weight_kg, reps_done)
                        VALUES (%s, %s, %s, %s)
@@ -81,7 +94,11 @@ def log_workout(user_hash: str, exercise: str, weight: float, reps: int) -> dict
 
 @mcp.tool
 def replace_exercise(user_hash: str, old: str, new: str, reason: str) -> dict:
-    """Replace an exercise across the entire program."""
+    """Replace an exercise across the entire program. user_hash can be email or pre-hashed value."""
+    # If user_hash looks like an email, hash it
+    if '@' in user_hash:
+        user_hash = lakebase.hash_email(user_hash)
+    
     prog = lakebase.run_query("SELECT program_id FROM user_programs WHERE user_id_hash = %s", (user_hash,))
     if not prog:
         return {"error": "No program"}
@@ -89,7 +106,11 @@ def replace_exercise(user_hash: str, old: str, new: str, reason: str) -> dict:
 
 @mcp.tool
 def adjust_intensity(user_hash: str, exercise: str, change_percent: float) -> dict:
-    """Adjust the weight percentage for an exercise."""
+    """Adjust the weight percentage for an exercise. user_hash can be email or pre-hashed value."""
+    # If user_hash looks like an email, hash it
+    if '@' in user_hash:
+        user_hash = lakebase.hash_email(user_hash)
+    
     prog = lakebase.run_query("SELECT program_id FROM user_programs WHERE user_id_hash = %s", (user_hash,))
     if not prog:
         return {"error": "No program"}

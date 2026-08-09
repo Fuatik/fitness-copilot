@@ -23,10 +23,10 @@ def get_coefficient(reps):
     Raises:
         ValueError: If no coefficient exists for the given rep count
     """
-    row = lakebase.run_query("SELECT percentage FROM coefficients WHERE reps = %s", (int(reps),))
+    row = lakebase.run_query("SELECT percentage FROM coefficients WHERE reps = %s", (reps,))
     if not row:
         raise ValueError(f"No coefficient for {reps} reps")
-    return float(row[0]['percentage']) / 100.0  # Convert Decimal to float
+    return float(row[0]['percentage']) / 100.0
 
 def calculate_1rm(weight, reps):
     """
@@ -42,7 +42,7 @@ def calculate_1rm(weight, reps):
     Returns:
         float: Estimated 1RM in kg
     """
-    return float(weight) / get_coefficient(int(reps))
+    return float(weight) / get_coefficient(reps)
 
 def round_to_step(value, step=2.5):
     """
@@ -58,7 +58,7 @@ def round_to_step(value, step=2.5):
     Returns:
         float: Rounded weight
     """
-    return round(float(value) / float(step)) * float(step)
+    return round(value / step) * step
 
 # ========================================
 # PROGRAM & USER DATA HELPERS
@@ -115,10 +115,10 @@ def generate_workout(user_hash, program_id, week):
         one_rm = calculate_1rm(test['test_weight'], test['test_reps'])
         
         # Step 2: Apply program percentage (e.g., 70% for Week 5)
-        target = one_rm * (ex['percentage_1rm'] / 100.0)
+        target = one_rm * (float(ex['percentage_1rm']) / 100.0)
         
         # Step 3: Round to nearest plate increment
-        step = ex['step_size'] or test['step_size'] or 2.5
+        step = float(ex['step_size'] or test['step_size'] or 2.5)
         weight = round_to_step(target, step)
         
         workout.append({
@@ -137,43 +137,97 @@ def generate_workout(user_hash, program_id, week):
 # (muscle groups, equipment) for semantic search and exercise substitution.
 WGER_URL = "https://wger.de/api/v2/exerciseinfo/"
 
+def _insert_exercise_with_embedding(info):
+    """
+    Insert exercise into database with computed embedding.
+    
+    Args:
+        info (dict): Exercise info with keys: name, description, muscles, equipment, instructions, gif_url
+    """
+    from sentence_transformers import SentenceTransformer
+    
+    # Validate required fields
+    if not info.get('name'):
+        raise ValueError("Exercise name is required")
+    
+    # Compute embedding from description and muscle groups
+    text = f"{info['description']} Targets: {', '.join(info.get('muscles', []))}"
+    model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    embedding = model.encode(text).tolist()
+    
+    # Insert/update cache with embedding
+    lakebase.run_write("""
+                       INSERT INTO exercise_metadata (name, description, muscles, equipment, instructions, gif_url, embedding)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s::vector)
+                       ON CONFLICT (name) DO UPDATE SET
+                                                        description = EXCLUDED.description,
+                                                        muscles = EXCLUDED.muscles,
+                                                        equipment = EXCLUDED.equipment,
+                                                        instructions = EXCLUDED.instructions,
+                                                        gif_url = EXCLUDED.gif_url,
+                                                        embedding = EXCLUDED.embedding
+                       """, (info['name'], info['description'], info['muscles'], info['equipment'], 
+                             info['instructions'], info['gif_url'], str(embedding)))
+
+# FALLBACK: Manual knowledge base for common exercises not in WGER
+MANUAL_EXERCISES = {
+    'Hyperextension': {
+        'name': 'Hyperextension',
+        'description': 'Back extension exercise targeting lower back, glutes, and hamstrings. Performed on a hyperextension bench.',
+        'muscles': ['Erector spinae', 'Gluteus maximus', 'Hamstrings'],
+        'equipment': ['Hyperextension bench'],
+        'instructions': 'Position yourself on the hyperextension bench with ankles secured. Lower your torso by bending at the waist. Raise back up to starting position.',
+        'gif_url': ''
+    },
+    'Back Extension': {
+        'name': 'Back Extension',
+        'description': 'Lower back strengthening exercise targeting erector spinae muscles.',
+        'muscles': ['Erector spinae', 'Gluteus maximus'],
+        'equipment': ['Hyperextension bench'],
+        'instructions': 'Lie face down on hyperextension bench. Lower torso down, then extend back up.',
+        'gif_url': ''
+    }
+}
+
 def fetch_exercise_info(exercise_name):
     # Check cache first
     cached = lakebase.run_query("SELECT * FROM exercise_metadata WHERE name = %s", (exercise_name,))
     if cached:
         return cached[0]
 
+    # Check manual knowledge base
+    if exercise_name in MANUAL_EXERCISES:
+        info = MANUAL_EXERCISES[exercise_name]
+        _insert_exercise_with_embedding(info)
+        return info
+
+    # Try WGER API
     url = WGER_URL
     params = {"language": 2, "name": exercise_name}
-    resp = requests.get(url, params=params, timeout=10)
-    if resp.status_code != 200:
-        return {"error": "API request failed"}
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json().get('results', [])
+            if data:
+                item = data[0]
+                # Validate name before processing
+                if not item.get('name'):
+                    return {"error": "Exercise found but has no name"}
+                
+                info = {
+                    'name': item.get('name'),
+                    'description': item.get('description') or "",
+                    'muscles': [m['name'] for m in item.get('muscles', [])],
+                    'equipment': [e['name'] for e in item.get('equipment', [])],
+                    'instructions': item.get('instructions', ""),
+                    'gif_url': item.get('image', [{}])[0].get('image') if item.get('image') else ""
+                }
+                _insert_exercise_with_embedding(info)
+                return info
+    except Exception as e:
+        pass  # Fall through to error case
 
-    data = resp.json().get('results', [])
-    if not data:
-        return {"error": "Exercise not found"}
-
-    item = data[0]
-    info = {
-        'name': item.get('name'),
-        'description': item.get('description') or "",
-        'muscles': [m['name'] for m in item.get('muscles', [])],
-        'equipment': [e['name'] for e in item.get('equipment', [])],
-        'instructions': item.get('instructions', ""),
-        'gif_url': item.get('image', [{}])[0].get('image') if item.get('image') else ""
-    }
-    # Insert/update cache
-    lakebase.run_write("""
-                       INSERT INTO exercise_metadata (name, description, muscles, equipment, instructions, gif_url)
-                       VALUES (%s, %s, %s, %s, %s, %s)
-                       ON CONFLICT (name) DO UPDATE SET
-                                                        description = EXCLUDED.description,
-                                                        muscles = EXCLUDED.muscles,
-                                                        equipment = EXCLUDED.equipment,
-                                                        instructions = EXCLUDED.instructions,
-                                                        gif_url = EXCLUDED.gif_url
-                       """, (info['name'], info['description'], info['muscles'], info['equipment'], info['instructions'], info['gif_url']))
-    return info
+    return {"error": f"Exercise '{exercise_name}' not found in database or WGER API"}
 
 # ========================================
 # CUSTOMIZATION TOOLS WITH SAFETY GUARDRAILS
