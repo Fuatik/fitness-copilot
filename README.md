@@ -1,6 +1,17 @@
 # Fitness Copilot – AI‑Powered Strength Program Generator
 
 This project turns periodization Excel logic into an interactive AI coaching assistant. It uses 1RM‑based calculations, coefficient tables, and linear progression from tested spreadsheets, and adds an AI agent that can recommend, customize, and log workouts.
+## 🚀 Deployed App
+
+**Live Frontend App:** https://fitness-frontend-7474645241135859.aws.databricksapps.com/
+
+The frontend provides:
+* User onboarding and profile setup
+* Personalized workout view with calculated weights
+* Exercise library with GIF demonstrations
+* Test week and workout logging
+* Fully customizable programs (edit/delete any exercise, save custom programs)
+
 
 ## Architecture
 
