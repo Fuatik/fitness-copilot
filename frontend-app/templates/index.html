@@ -45,6 +45,7 @@
             text-align: center;
             color: white;
             margin-bottom: 30px;
+            position: relative;
         }
 
         .header h1 {
@@ -56,6 +57,35 @@
         .header p {
             font-size: 1.1rem;
             opacity: 0.9;
+        }
+
+        .coach-button {
+            position: absolute;
+            top: 0;
+            right: 0;
+            padding: 12px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .coach-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .coach-button.visible {
+            display: flex;
         }
 
         .card {
@@ -295,6 +325,7 @@
             cursor: pointer;
             text-decoration: underline;
             font-weight: 500;
+            margin-right: 12px;
         }
 
         .exercise-link:hover {
@@ -399,9 +430,91 @@
             margin-bottom: 12px;
         }
 
+        .chat-widget-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 400px;
+            height: 600px;
+            z-index: 1000;
+        }
+
+        .chat-widget-container.hidden {
+            display: none;
+        }
+
+        .chat-widget {
+            width: 100%;
+            height: 100%;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            border: none;
+        }
+
+        .chat-close {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--danger);
+            color: white;
+            border: 2px solid white;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1001;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .chat-close:hover {
+            background: #dc2626;
+            transform: scale(1.1);
+        }
+
+        .chat-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 999;
+            transition: all 0.3s;
+        }
+
+        .chat-toggle:hover {
+            transform: scale(1.1);
+            background: var(--primary-dark);
+        }
+
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 2rem;
+            }
+
+            .header {
+                padding-top: 60px;
+            }
+
+            .coach-button {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                left: auto;
+                z-index: 1002;
+                padding: 10px 16px;
+                font-size: 0.9rem;
             }
 
             .card {
@@ -421,12 +534,24 @@
             .test-input-grid {
                 grid-template-columns: 1fr;
             }
+
+            .chat-widget-container {
+                width: calc(100vw - 40px);
+                height: calc(100vh - 100px);
+                bottom: 10px;
+                right: 10px;
+                left: 10px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
+            <button class="coach-button" id="coachButton" onclick="toggleChat()">
+                <span>💬</span>
+                <span>Chat with Your Coach</span>
+            </button>
             <h1>💪 Fitness Copilot</h1>
             <p>Your personalized strength training program</p>
         </div>
@@ -450,12 +575,11 @@
 
             <h2 style="margin-bottom: 24px; color: var(--gray-900);">Start Your Journey</h2>
             
+            <div class="alert" style="background: #dbeafe; color: #1e40af; border-left: 4px solid var(--primary); margin-bottom: 24px;">
+                👤 Logged in as: <strong>{{ user_email }}</strong>
+            </div>
+            
             <form id="onboarding-form">
-                <div class="form-group">
-                    <label for="email">Email</label>
-                    <input type="email" id="email" name="email" required placeholder="your@email.com">
-                </div>
-
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                     <div class="form-group">
                         <label for="age">Age</label>
@@ -484,9 +608,13 @@
                 <div class="form-group">
                     <label for="frequency">Days per Week</label>
                     <select id="frequency" name="frequency">
+                        <option value="1">1 day</option>
                         <option value="2">2 days</option>
                         <option value="3" selected>3 days</option>
                         <option value="4">4 days</option>
+                        <option value="5">5 days</option>
+                        <option value="6">6 days</option>
+                        <option value="7">7 days</option>
                     </select>
                 </div>
 
@@ -496,7 +624,7 @@
                 </div>
 
                 <div class="alert alert-warning">
-                    🔒 Your email is hashed and stored securely. No raw PII is saved.
+                    🔒 Your workout data is stored securely using your Databricks identity.
                 </div>
 
                 <div class="btn-group">
@@ -562,6 +690,16 @@
 
             <div class="week-selector" id="week-selector"></div>
 
+            <!-- Exercise Management Buttons -->
+            <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+                <button onclick="showAddExerciseModal()" class="btn btn-primary">
+                    ➕ Add Exercise
+                </button>
+                <button onclick="showProgramSelector()" class="btn btn-secondary">
+                    🔄 Change Program
+                </button>
+            </div>
+
             <div id="workout-container"></div>
         </div>
     </div>
@@ -581,8 +719,128 @@
         </div>
     </div>
 
+    <!-- Add Exercise Modal -->
+    <div id="addExerciseModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAddExerciseModal()">&times;</span>
+            <h2 id="add-exercise-title">Add Exercise to Week 1</h2>
+            
+            <form id="add-exercise-form" onsubmit="submitAddExercise(event)">
+                <div class="form-group">
+                    <label>Exercise Name</label>
+                    <input type="text" id="new-exercise-name" required placeholder="e.g., Incline Dumbbell Press">
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                    <div class="form-group">
+                        <label>Sets</label>
+                        <input type="number" id="new-sets" value="3" min="1" max="10" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Reps</label>
+                        <input type="text" id="new-reps" value="8-10" required placeholder="8-10">
+                    </div>
+                    <div class="form-group">
+                        <label>Intensity (% 1RM)</label>
+                        <input type="number" id="new-intensity" value="70" step="5" min="30" max="100" placeholder="Optional">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Manual Weight (kg) - Optional</label>
+                    <input type="number" id="new-weight-override" step="0.5" placeholder="Leave blank to calculate from 1RM">
+                </div>
+                
+                <div class="form-group">
+                    <label>Notes (optional)</label>
+                    <input type="text" id="new-notes" placeholder="e.g., tempo 3-1-1-0, pause at bottom">
+                </div>
+                
+                <div class="btn-group">
+                    <button type="button" onclick="closeAddExerciseModal()" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-success" style="flex: 1;">Add Exercise</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Exercise Modal -->
+    <div id="editExerciseModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeEditExerciseModal()">&times;</span>
+            <h2>Edit Exercise</h2>
+            
+            <form id="edit-exercise-form" onsubmit="submitEditExercise(event)">
+                <input type="hidden" id="edit-exercise-id">
+                
+                <div class="form-group">
+                    <label>Exercise Name</label>
+                    <input type="text" id="edit-exercise-name" required>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                    <div class="form-group">
+                        <label>Sets</label>
+                        <input type="number" id="edit-sets" min="1" max="10" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Reps</label>
+                        <input type="text" id="edit-reps" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Intensity (% 1RM)</label>
+                        <input type="number" id="edit-intensity" step="5" min="30" max="100">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Manual Weight (kg)</label>
+                    <input type="number" id="edit-weight-override" step="0.5">
+                </div>
+                
+                <div class="form-group">
+                    <label>Notes</label>
+                    <input type="text" id="edit-notes">
+                </div>
+                
+                <div class="btn-group">
+                    <button type="button" onclick="closeEditExerciseModal()" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-success" style="flex: 1;">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Program Selector Modal -->
+    <div id="programSelectorModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeProgramSelector()">&times;</span>
+            <h2>Choose a Program</h2>
+            
+            <div class="alert alert-warning">
+                ⚠️ <strong>Warning:</strong> Switching programs will reset your progress to week 1 and delete all test results and custom exercises.
+            </div>
+            
+            <div id="programs-list" style="margin-top: 20px;"></div>
+        </div>
+    </div>
+
+    <!-- Agent Bricks Chat Widget -->
+    <div id="chatContainer" class="chat-widget-container hidden">
+        <button class="chat-close" onclick="toggleChat()" title="Close chat">×</button>
+        <iframe 
+            class="chat-widget" 
+            src="https://agent-fitness-copilot-7474645241135859.aws.databricksapps.com"
+            allow="microphone; camera"
+        ></iframe>
+    </div>
+
     <script>
-        let userHash = null;
+        // Pre-filled authenticated user email from Databricks
+        const authenticatedEmail = "{{ user_email }}";
+        const userHashValue = "{{ user_hash }}";
+        
+        let userHash = userHashValue;
         let currentWeek = 1;
         let programInfo = null;
         const exercises = [
@@ -616,14 +874,13 @@
                 programInfo = program;
                 
                 // Assign program
-                userHash = btoa(data.email); // Simple hash for demo
                 await fetch('/api/assign_program', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        user_hash: data.email,
+                        user_hash: userHashValue,
                         program_id: program.program_id,
-                        frequency: parseInt(data.frequency)
+                        days_per_week: parseInt(data.frequency)
                     })
                 });
                 
@@ -635,8 +892,10 @@
         });
 
         function showTestWeekStep() {
+            // Hide ALL steps first
             document.getElementById('step-onboarding').classList.add('hidden');
             document.getElementById('step-test-week').classList.remove('hidden');
+            document.getElementById('step-program').classList.add('hidden');
             
             document.getElementById('program-name').textContent = programInfo.name;
             document.getElementById('program-description').textContent = programInfo.description;
@@ -659,11 +918,12 @@
                     </div>
                 </div>
             `).join('');
+            
+            // Show coach button after completing onboarding
+            showCoachButton();
         }
 
         async function saveTestResults() {
-            const email = document.getElementById('email').value;
-            
             // Save test results for each exercise
             for (const ex of exercises) {
                 const weight = document.getElementById(`weight-${ex.replace(/\s/g, '-')}`).value;
@@ -674,16 +934,16 @@
                     return;
                 }
                 
-                // Calculate 1RM using Brzycki formula: weight / (1.0278 - 0.0278 * reps)
-                const oneRm = parseFloat(weight) / (1.0278 - 0.0278 * parseInt(reps));
-                
+                // Send raw test weight and reps (backend will calculate 1RM when needed)
                 await fetch('/api/enter_test_results', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        user_hash: email,
+                        user_hash: userHashValue,
                         exercise_name: ex,
-                        one_rm: oneRm
+                        test_weight: parseFloat(weight),
+                        test_reps: parseInt(reps),
+                        step_size: 2.5  // Default barbell plate increment
                     })
                 });
             }
@@ -692,29 +952,76 @@
             showProgramStep();
         }
 
-        function showProgramStep() {
+        async function showProgramStep() {
+            // Hide ALL steps first
+            document.getElementById('step-onboarding').classList.add('hidden');
             document.getElementById('step-test-week').classList.add('hidden');
             document.getElementById('step-program').classList.remove('hidden');
             
             document.getElementById('program-subtitle').textContent = programInfo.name;
             
-            // Create week selector
+            // Load available weeks from backend
+            await loadAvailableWeeks();
+            
+            // Show coach button
+            showCoachButton();
+        }
+        
+        async function loadAvailableWeeks() {
+            try {
+                const resp = await fetch(`/api/available_weeks?user_hash=${encodeURIComponent(userHashValue)}`);
+                const data = await resp.json();
+                
+                if (data.error) {
+                    console.error('Failed to load available weeks:', data.error);
+                    // Fallback to showing weeks 1-7
+                    createWeekButtons([1, 2, 3, 4, 5, 6, 7]);
+                    loadWorkout(currentWeek);
+                    return;
+                }
+                
+                const availableWeeks = data.available_weeks || [];
+                
+                if (availableWeeks.length === 0) {
+                    console.warn('No weeks available, using default 1-7');
+                    createWeekButtons([1, 2, 3, 4, 5, 6, 7]);
+                    loadWorkout(currentWeek);
+                    return;
+                }
+                
+                // Create buttons only for available weeks
+                createWeekButtons(availableWeeks);
+                
+                // Load the first available week if current week is not available
+                if (!availableWeeks.includes(currentWeek) && availableWeeks.length > 0) {
+                    currentWeek = availableWeeks[0];
+                }
+                
+                loadWorkout(currentWeek);
+                
+            } catch (error) {
+                console.error('Error loading available weeks:', error);
+                // Fallback to showing weeks 1-7
+                createWeekButtons([1, 2, 3, 4, 5, 6, 7]);
+                loadWorkout(currentWeek);
+            }
+        }
+        
+        function createWeekButtons(weeks) {
             const weekSelector = document.getElementById('week-selector');
             weekSelector.innerHTML = '';
-            for (let i = 1; i <= 7; i++) {
-                const btn = document.createElement('button');
-                btn.textContent = `Week ${i}`;
-                btn.className = 'week-btn' + (i === 1 ? ' active' : '');
-                btn.onclick = () => loadWorkout(i);
-                weekSelector.appendChild(btn);
-            }
             
-            loadWorkout(1);
+            weeks.forEach(week => {
+                const btn = document.createElement('button');
+                btn.textContent = `Week ${week}`;
+                btn.className = 'week-btn' + (week === currentWeek ? ' active' : '');
+                btn.onclick = () => loadWorkout(week);
+                weekSelector.appendChild(btn);
+            });
         }
 
         async function loadWorkout(week) {
             currentWeek = week;
-            const email = document.getElementById('email').value;
             
             // Update active week button
             document.querySelectorAll('.week-btn').forEach((btn, i) => {
@@ -722,7 +1029,7 @@
             });
             
             try {
-                const resp = await fetch(`/api/workout?user_hash=${email}&week=${week}`);
+                const resp = await fetch(`/api/workout?user_hash=${encodeURIComponent(userHashValue)}&week=${week}`);
                 const data = await resp.json();
                 
                 const container = document.getElementById('workout-container');
@@ -754,11 +1061,17 @@
                 data.exercises.forEach(ex => {
                     html += `
                         <tr>
-                            <td><strong>${ex.exercise}</strong></td>
+                            <td><strong>${ex.exercise}</strong>${ex.notes ? `<br><small style="color: var(--gray-600);">${ex.notes}</small>` : ''}</td>
                             <td>${ex.weight_kg}</td>
                             <td>${ex.sets}</td>
                             <td>${ex.reps}</td>
-                            <td><span class="exercise-link" onclick="showExercise('${ex.exercise}')">How to do it</span></td>
+                            <td>
+                                <span class="exercise-link" onclick="showExercise('${ex.exercise.replace(/'/g, "\\'")}')">ℹ️ Info</span>
+                                ${ex.is_custom ? `
+                                    <span class="exercise-link" onclick="editExercise(${ex.id}, '${ex.exercise.replace(/'/g, "\\'")}')">✏️ Edit</span>
+                                    <span class="exercise-link" onclick="deleteExercise(${ex.id}, '${ex.exercise.replace(/'/g, "\\'")}')" style="color: var(--danger);">🗑️ Delete</span>
+                                ` : ''}
+                            </td>
                         </tr>
                     `;
                 });
@@ -784,9 +1097,18 @@
                 document.getElementById('ex-name').textContent = data.name || name;
                 document.getElementById('ex-muscles').textContent = '🎯 ' + (data.muscles ? data.muscles.join(', ') : 'N/A');
                 document.getElementById('ex-equipment').textContent = '🏋️ ' + (data.equipment ? data.equipment.join(', ') : 'N/A');
-                document.getElementById('ex-instructions').textContent = data.instructions || 'No instructions available.';
-                document.getElementById('ex-gif').src = data.gif_url || '';
-                document.getElementById('ex-gif').style.display = data.gif_url ? 'block' : 'none';
+                // Use innerHTML to render HTML instructions properly
+                document.getElementById('ex-instructions').innerHTML = data.instructions || 'No instructions available.';
+                
+                // Force GIF reload to restart animation
+                const gifImg = document.getElementById('ex-gif');
+                if (data.gif_url) {
+                    gifImg.src = data.gif_url + '?t=' + new Date().getTime();
+                    gifImg.style.display = 'block';
+                } else {
+                    gifImg.src = '';
+                    gifImg.style.display = 'none';
+                }
                 
                 document.getElementById('exerciseModal').classList.add('show');
             } catch (error) {
@@ -799,7 +1121,9 @@
         }
 
         function goBackToOnboarding() {
+            // Hide ALL steps first
             document.getElementById('step-test-week').classList.add('hidden');
+            document.getElementById('step-program').classList.add('hidden');
             document.getElementById('step-onboarding').classList.remove('hidden');
         }
 
@@ -809,20 +1133,336 @@
                 closeModal();
             }
         });
-    </script>
 
-    <!-- Agent Bricks Embedded Chat -->
-    <script
-        type="module"
-        src="https://dbc-6d772f8a-cdb6.cloud.databricks.com/ml/static/ab-chat-widget/ab-chat-widget.bundle.js"
-        db-host="https://dbc-6d772f8a-cdb6.cloud.databricks.com"
-        db-serving-endpoint="fitness_broker"
-        db-title="Fitness Copilot Assistant"
-        db-subtitle="Ask me anything about your workout program!"
-        db-button-label="Chat with Fitness Copilot"
-        db-button-position="bottom-right"
-        db-chat-width="450px"
-        db-chat-height="700px"
-    ></script>
+        // Auto-load user state on page load
+        async function loadUserState() {
+            console.log('[LoadState] Starting loadUserState...');
+            console.log('[LoadState] Email:', authenticatedEmail, 'Hash:', userHashValue);
+            
+            if (!authenticatedEmail || !userHashValue) {
+                console.log('[LoadState] No authenticated email, showing onboarding');
+                return;
+            }
+            
+            try {
+                console.log('[LoadState] Fetching user status...');
+                const resp = await fetch(`/api/user_status?user_hash=${encodeURIComponent(userHashValue)}`);
+                const state = await resp.json();
+                console.log('[LoadState] User status:', state);
+                
+                if (state.error) {
+                    console.error('[LoadState] User status check failed:', state.error);
+                    return;
+                }
+                
+                if (state.step === 1) {
+                    // New user, show onboarding
+                    console.log('[LoadState] Step 1: New user, showing onboarding');
+                    return;
+                }
+                
+                if (state.step === 2) {
+                    // User has program but no test results, show test week
+                    console.log('[LoadState] Step 2: Showing test week');
+                    if (!state.program) {
+                        console.error('[LoadState] No program data in state!');
+                        return;
+                    }
+                    programInfo = state.program;
+                    showTestWeekStep();
+                    return;
+                }
+                
+                if (state.step === 3) {
+                    // User has completed tests, show program
+                    console.log('[LoadState] Step 3: Showing program, week', state.current_week);
+                    if (!state.program) {
+                        console.error('[LoadState] No program data in state!');
+                        return;
+                    }
+                    programInfo = state.program;
+                    currentWeek = state.current_week || 1;
+                    showProgramStep();
+                    return;
+                }
+                
+                console.warn('[LoadState] Unexpected step value:', state.step);
+                
+            } catch (error) {
+                console.error('[LoadState] Error loading user state:', error);
+            }
+        }
+        
+        // Load user state when page loads
+        window.addEventListener('DOMContentLoaded', loadUserState);
+
+        function toggleChat() {
+            const chatContainer = document.getElementById('chatContainer');
+            chatContainer.classList.toggle('hidden');
+        }
+
+        function showCoachButton() {
+            const coachButton = document.getElementById('coachButton');
+            if (coachButton) {
+                coachButton.classList.add('visible');
+            }
+        }
+
+        // ========================================
+        // EXERCISE MANAGEMENT FUNCTIONS
+        // ========================================
+        
+        function showAddExerciseModal() {
+            document.getElementById('add-exercise-title').textContent = `Add Exercise to Week ${currentWeek}`;
+            document.getElementById('addExerciseModal').classList.add('show');
+        }
+
+        function closeAddExerciseModal() {
+            document.getElementById('addExerciseModal').classList.remove('show');
+            document.getElementById('add-exercise-form').reset();
+        }
+
+        async function submitAddExercise(e) {
+            e.preventDefault();
+            
+            const exerciseName = document.getElementById('new-exercise-name').value;
+            const sets = parseInt(document.getElementById('new-sets').value);
+            const reps = document.getElementById('new-reps').value;
+            const intensity = parseFloat(document.getElementById('new-intensity').value) || null;
+            const weightOverride = parseFloat(document.getElementById('new-weight-override').value) || null;
+            const notes = document.getElementById('new-notes').value;
+            
+            try {
+                const resp = await fetch('/api/custom_exercises', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_hash: userHashValue,
+                        week: currentWeek,
+                        exercise_name: exerciseName,
+                        sets: sets,
+                        reps: reps,
+                        intensity: intensity,
+                        weight_override: weightOverride,
+                        notes: notes
+                    })
+                });
+                
+                const data = await resp.json();
+                
+                if (data.success) {
+                    closeAddExerciseModal();
+                    loadWorkout(currentWeek);  // Reload workout to show new exercise
+                    alert(`✅ ${data.message}`);
+                } else {
+                    alert('❌ Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('❌ Error adding exercise: ' + error.message);
+            }
+        }
+
+        let currentEditExerciseId = null;
+
+        async function editExercise(exerciseId, exerciseName) {
+            currentEditExerciseId = exerciseId;
+            
+            // Fetch current exercise data
+            try {
+                const resp = await fetch(`/api/workout?user_hash=${encodeURIComponent(userHashValue)}&week=${currentWeek}`);
+                const data = await resp.json();
+                
+                const exercise = data.exercises.find(ex => ex.id === exerciseId);
+                
+                if (exercise) {
+                    document.getElementById('edit-exercise-id').value = exerciseId;
+                    document.getElementById('edit-exercise-name').value = exercise.exercise;
+                    document.getElementById('edit-sets').value = exercise.sets;
+                    document.getElementById('edit-reps').value = exercise.reps;
+                    document.getElementById('edit-intensity').value = exercise.intensity || '';
+                    document.getElementById('edit-weight-override').value = exercise.weight_override || '';
+                    document.getElementById('edit-notes').value = exercise.notes || '';
+                    
+                    document.getElementById('editExerciseModal').classList.add('show');
+                }
+            } catch (error) {
+                alert('Error loading exercise data: ' + error.message);
+            }
+        }
+
+        function closeEditExerciseModal() {
+            document.getElementById('editExerciseModal').classList.remove('show');
+            currentEditExerciseId = null;
+        }
+
+        async function submitEditExercise(e) {
+            e.preventDefault();
+            
+            const exerciseId = document.getElementById('edit-exercise-id').value;
+            const exerciseName = document.getElementById('edit-exercise-name').value;
+            const sets = parseInt(document.getElementById('edit-sets').value);
+            const reps = document.getElementById('edit-reps').value;
+            const intensity = parseFloat(document.getElementById('edit-intensity').value) || null;
+            const weightOverride = parseFloat(document.getElementById('edit-weight-override').value) || null;
+            const notes = document.getElementById('edit-notes').value;
+            
+            try {
+                const resp = await fetch(`/api/custom_exercises/${exerciseId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_hash: userHashValue,
+                        exercise_name: exerciseName,
+                        sets: sets,
+                        reps: reps,
+                        intensity: intensity,
+                        weight_override: weightOverride,
+                        notes: notes
+                    })
+                });
+                
+                const data = await resp.json();
+                
+                if (data.success) {
+                    closeEditExerciseModal();
+                    loadWorkout(currentWeek);
+                    alert('✅ Exercise updated successfully');
+                } else {
+                    alert('❌ Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('❌ Error updating exercise: ' + error.message);
+            }
+        }
+
+        async function deleteExercise(exerciseId, exerciseName) {
+            if (!confirm(`Are you sure you want to delete "${exerciseName}"?`)) {
+                return;
+            }
+            
+            try {
+                const resp = await fetch(`/api/custom_exercises/${exerciseId}?user_hash=${encodeURIComponent(userHashValue)}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await resp.json();
+                
+                if (data.success) {
+                    loadWorkout(currentWeek);
+                    alert('✅ Exercise deleted successfully');
+                } else {
+                    alert('❌ Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('❌ Error deleting exercise: ' + error.message);
+            }
+        }
+
+        // ========================================
+        // PROGRAM SWITCHING FUNCTIONS
+        // ========================================
+        
+        async function showProgramSelector() {
+            try {
+                const resp = await fetch('/api/programs');
+                const programs = await resp.json();
+                
+                const container = document.getElementById('programs-list');
+                
+                if (!programs || programs.length === 0) {
+                    container.innerHTML = '<p style="color: var(--gray-600);">No programs available.</p>';
+                    document.getElementById('programSelectorModal').classList.add('show');
+                    return;
+                }
+                
+                let html = '<div style="display: flex; flex-direction: column; gap: 12px;">';
+                
+                programs.forEach(prog => {
+                    const isCurrentProgram = programInfo && prog.id === programInfo.program_id;
+                    html += `
+                        <div style="
+                            padding: 16px;
+                            border: 2px solid ${isCurrentProgram ? 'var(--primary)' : 'var(--gray-300)'};
+                            border-radius: 12px;
+                            background: ${isCurrentProgram ? 'var(--gray-50)' : 'white'};
+                            cursor: ${isCurrentProgram ? 'default' : 'pointer'};
+                        " onclick="${isCurrentProgram ? '' : `switchProgram(${prog.id}, '${prog.name.replace(/'/g, "\\'")}')` }">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <div>
+                                    <h3 style="margin-bottom: 4px; color: var(--gray-900);">${prog.name}</h3>
+                                    <p style="color: var(--gray-600); font-size: 0.9rem; margin-bottom: 8px;">${prog.description || 'No description'}</p>
+                                    <div style="display: flex; gap: 12px; font-size: 0.875rem;">
+                                        <span style="color: var(--gray-600);">🎯 ${prog.target || 'General'}</span>
+                                        <span style="color: var(--gray-600);">📊 Version ${prog.version}</span>
+                                    </div>
+                                </div>
+                                ${isCurrentProgram ? '<span style="color: var(--primary); font-weight: 600;">✓ Current</span>' : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                container.innerHTML = html;
+                
+                document.getElementById('programSelectorModal').classList.add('show');
+            } catch (error) {
+                alert('Error loading programs: ' + error.message);
+            }
+        }
+
+        function closeProgramSelector() {
+            document.getElementById('programSelectorModal').classList.remove('show');
+        }
+
+        async function switchProgram(programId, programName) {
+            if (!confirm(`Switch to "${programName}"?\n\nThis will:\n• Reset your progress to week 1\n• Delete all test results\n• Delete all custom exercises\n\nYou'll need to complete test week again.`)) {
+                return;
+            }
+            
+            try {
+                const resp = await fetch('/api/switch_program', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_hash: userHashValue,
+                        program_id: programId
+                    })
+                });
+                
+                const data = await resp.json();
+                
+                if (data.success) {
+                    closeProgramSelector();
+                    alert(`✅ Switched to ${data.program_name}!\n\nYou'll now be taken to test week.`);
+                    // Reload the page to reset to test week
+                    window.location.reload();
+                } else {
+                    alert('❌ Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('❌ Error switching program: ' + error.message);
+            }
+        }
+
+        // Close modals on outside click
+        document.getElementById('addExerciseModal').addEventListener('click', (e) => {
+            if (e.target.id === 'addExerciseModal') {
+                closeAddExerciseModal();
+            }
+        });
+
+        document.getElementById('editExerciseModal').addEventListener('click', (e) => {
+            if (e.target.id === 'editExerciseModal') {
+                closeEditExerciseModal();
+            }
+        });
+
+        document.getElementById('programSelectorModal').addEventListener('click', (e) => {
+            if (e.target.id === 'programSelectorModal') {
+                closeProgramSelector();
+            }
+        });
+    </script>
 </body>
 </html>

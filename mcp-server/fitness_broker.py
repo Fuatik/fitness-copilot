@@ -83,16 +83,38 @@ def get_user_tests(user_hash, program_id):
                               """, (user_hash, program_id))
     return {r['exercise_name']: r for r in rows}
 
+def get_user_custom_exercises(user_hash, program_id, week):
+    """
+    Fetch user's custom exercises for a specific week.
+    
+    Args:
+        user_hash (str): SHA-256 hash of user's email
+        program_id (int): ID of assigned program
+        week (int): Week number
+    
+    Returns:
+        list[dict]: Custom exercises with weights/sets/reps
+    """
+    rows = lakebase.run_query("""
+        SELECT id, exercise_name, sets, reps, intensity, weight_override, notes, display_order
+        FROM user_custom_exercises
+        WHERE user_id_hash = %s AND program_id = %s AND week = %s
+        ORDER BY display_order, id
+    """, (user_hash, program_id, week))
+    return rows or []
+
 def generate_workout(user_hash, program_id, week):
     """
-    Generate a personalized workout by combining user test results with program template.
+    Generate a personalized workout by combining user test results with program template
+    and custom exercises.
     
     Process:
     1. Fetch user's 1RM test results (e.g., Bench Press: 80kg × 5 reps)
     2. Fetch program template for this week (e.g., Week 5: 70% of 1RM)
     3. Calculate target weight: 1RM × percentage
        Example: (80 / 0.87) × 0.70 = 64.4kg → rounded to 65kg
-    4. Return list of exercises with calculated weights, sets, reps
+    4. Fetch and merge user's custom exercises
+    5. Return list of exercises with calculated weights, sets, reps
     
     Args:
         user_hash (str): SHA-256 hash of user's email
@@ -101,11 +123,13 @@ def generate_workout(user_hash, program_id, week):
     
     Returns:
         list[dict]: Workout with calculated weights
-            [{'exercise': 'Bench Press', 'weight_kg': 65.0, 'sets': 4, 'reps': 5}, ...]
+            [{'exercise': 'Bench Press', 'weight_kg': 65.0, 'sets': 4, 'reps': 5, 'is_custom': False}, ...]
     """
     tests = get_user_tests(user_hash, program_id)
     template = get_program_template(program_id, week)
     workout = []
+    
+    # Process program exercises
     for ex in template:
         if ex['exercise_name'] not in tests:
             continue  # Skip exercises user hasn't tested
@@ -125,8 +149,40 @@ def generate_workout(user_hash, program_id, week):
             'exercise': ex['exercise_name'],
             'weight_kg': weight,
             'sets': ex['sets'],
-            'reps': ex['reps']
+            'reps': ex['reps'],
+            'is_custom': False
         })
+    
+    # Add custom exercises
+    custom_exercises = get_user_custom_exercises(user_hash, program_id, week)
+    for custom in custom_exercises:
+        # Calculate weight for custom exercise
+        if custom['weight_override']:
+            # User specified manual weight
+            weight = float(custom['weight_override'])
+        elif custom['intensity'] and custom['exercise_name'] in tests:
+            # Calculate from intensity % and 1RM
+            test = tests[custom['exercise_name']]
+            one_rm = calculate_1rm(test['test_weight'], test['test_reps'])
+            target = one_rm * (float(custom['intensity']) / 100.0)
+            step = float(test['step_size'] or 2.5)
+            weight = round_to_step(target, step)
+        else:
+            # No weight info available
+            weight = '-'
+        
+        workout.append({
+            'exercise': custom['exercise_name'],
+            'weight_kg': weight,
+            'sets': custom['sets'],
+            'reps': custom['reps'],
+            'is_custom': True,
+            'id': custom['id'],
+            'notes': custom.get('notes', ''),
+            'intensity': custom.get('intensity'),
+            'weight_override': custom.get('weight_override')
+        })
+    
     return workout
 
 # ========================================
@@ -181,22 +237,6 @@ MANUAL_EXERCISES = {
         'muscles': ['Pectoralis major', 'Anterior deltoid', 'Triceps brachii'],
         'equipment': ['Dumbbells', 'Bench'],
         'instructions': 'Lie on bench holding dumbbells at chest level. Press dumbbells up until arms are extended. Lower with control back to chest level.',
-        'gif_url': ''
-    },
-    'Push-ups': {
-        'name': 'Push-ups',
-        'description': 'Classic bodyweight chest exercise targeting pectorals, shoulders, and triceps. No equipment required.',
-        'muscles': ['Pectoralis major', 'Anterior deltoid', 'Triceps brachii'],
-        'equipment': ['none (bodyweight exercise)'],
-        'instructions': 'Start in plank position with hands shoulder-width apart. Lower your body until chest nearly touches the floor. Push back up to starting position.',
-        'gif_url': ''
-    },
-    'Dips': {
-        'name': 'Dips',
-        'description': 'Bodyweight exercise targeting chest, shoulders, and triceps. Can be performed on parallel bars or bench.',
-        'muscles': ['Pectoralis major', 'Anterior deltoid', 'Triceps brachii'],
-        'equipment': ['Dip bars or bench'],
-        'instructions': 'Support yourself on parallel bars with arms straight. Lower your body by bending elbows until shoulders are below elbows. Push back up to starting position.',
         'gif_url': ''
     }
 }
