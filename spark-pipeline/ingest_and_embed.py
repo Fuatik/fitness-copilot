@@ -113,22 +113,41 @@ print(f"\n✅ Total exercises fetched: {len(exercises)}")
 # DBTITLE 1,Parse and Store Exercises in Lakebase
 def parse_exercise(item):
     """Parse WGER response into our schema."""
+    # Find English translation (language ID = 2)
+    translations = item.get('translations', [])
+    english = [t for t in translations if t.get('language') == 2]
+    
+    if not english:
+        return None  # Skip exercises without English translation
+    
+    trans = english[0]
+    name = trans.get('name', '').strip()
+    description = trans.get('description', '') or f"{name} – a strength training exercise."
+    
+    # Get first image from images array
+    images = item.get('images', [])
+    gif_url = images[0].get('image', '') if images else ''
+    
     return {
-        'name': item.get('name', ''),
-        'description': item.get('description') or f"{item.get('name', 'Unknown')} – a strength training exercise.",
-        'muscles': [m['name'] for m in item.get('muscles', [])] if item.get('muscles') else [],
-        'equipment': [e['name'] for e in item.get('equipment', [])] if item.get('equipment') else [],
-        'instructions': item.get('instructions') or 'No instructions available.',
-        'gif_url': item.get('image', [{}])[0].get('image') if item.get('image') else ''
+        'name': name,
+        'description': description,
+        'muscles': [m.get('name_en') or m.get('name', '') for m in item.get('muscles', [])],
+        'equipment': [e.get('name', '') for e in item.get('equipment', [])],
+        'instructions': description,  # WGER combines description+instructions now
+        'gif_url': gif_url
     }
 
 print("Storing exercises in Lakebase...")
 stored_count = 0
+skipped_count = 0
 with get_conn() as conn:
     with conn.cursor() as cur:
-        for item in exercises:
+        for i, item in enumerate(exercises):
             ex = parse_exercise(item)
-            if not ex['name']:
+            if ex is None or not ex.get('name'):
+                skipped_count += 1
+                if skipped_count <= 3:
+                    print(f"  ⚠️  Skipped exercise {i+1}: no English translation or empty name")
                 continue
             cur.execute("""
                         INSERT INTO exercise_metadata (name, description, muscles, equipment, instructions, gif_url)
@@ -141,8 +160,11 @@ with get_conn() as conn:
                                                          gif_url = EXCLUDED.gif_url
                         """, (ex['name'], ex['description'], ex['muscles'], ex['equipment'], ex['instructions'], ex['gif_url']))
             stored_count += 1
+            if stored_count % 100 == 0:
+                print(f"  Progress: {stored_count} stored...")
         conn.commit()
-print(f"✅ Stored/updated {stored_count} exercises in exercise_metadata.")
+print(f"\n✅ Stored/updated {stored_count} exercises")
+print(f"⚠️  Skipped {skipped_count} exercises (empty names)")
 
 # COMMAND ----------
 
@@ -155,7 +177,7 @@ with get_conn() as conn:
                     FROM exercise_metadata
                     WHERE description IS NOT NULL
                       AND description != ''
-                      AND (embedding IS NULL OR embedding = '[]'::vector)
+                      AND embedding IS NULL
                     ORDER BY name
                     LIMIT 500
                     """)
