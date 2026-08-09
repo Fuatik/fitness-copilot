@@ -137,37 +137,9 @@ def generate_workout(user_hash, program_id, week):
 # (muscle groups, equipment) for semantic search and exercise substitution.
 WGER_URL = "https://wger.de/api/v2/exerciseinfo/"
 
-def _insert_exercise_with_embedding(info):
-    """
-    Insert exercise into database with computed embedding.
-    
-    Args:
-        info (dict): Exercise info with keys: name, description, muscles, equipment, instructions, gif_url
-    """
-    from sentence_transformers import SentenceTransformer
-    
-    # Validate required fields
-    if not info.get('name'):
-        raise ValueError("Exercise name is required")
-    
-    # Compute embedding from description and muscle groups
-    text = f"{info['description']} Targets: {', '.join(info.get('muscles', []))}"
-    model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-    embedding = model.encode(text).tolist()
-    
-    # Insert/update cache with embedding
-    lakebase.run_write("""
-                       INSERT INTO exercise_metadata (name, description, muscles, equipment, instructions, gif_url, embedding)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s::vector)
-                       ON CONFLICT (name) DO UPDATE SET
-                                                        description = EXCLUDED.description,
-                                                        muscles = EXCLUDED.muscles,
-                                                        equipment = EXCLUDED.equipment,
-                                                        instructions = EXCLUDED.instructions,
-                                                        gif_url = EXCLUDED.gif_url,
-                                                        embedding = EXCLUDED.embedding
-                       """, (info['name'], info['description'], info['muscles'], info['equipment'], 
-                             info['instructions'], info['gif_url'], str(embedding)))
+# REMOVED: _insert_exercise_with_embedding
+# New approach: Weekly job handles ALL exercise ingestion and embedding.
+# No inline embedding on-demand.
 
 # FALLBACK: Manual knowledge base for common exercises not in WGER
 MANUAL_EXERCISES = {
@@ -230,44 +202,36 @@ MANUAL_EXERCISES = {
 }
 
 def fetch_exercise_info(exercise_name):
-    # Check cache first
+    """
+    Fetch exercise info from database ONLY.
+    
+    New approach (2024):
+    - Check exercise_metadata table
+    - If not found, return error immediately
+    - NO WGER API calls
+    - NO inline embedding
+    - Weekly scheduled job handles ALL data ingestion and embedding
+    
+    Args:
+        exercise_name (str): Name of exercise to look up
+    
+    Returns:
+        dict: Exercise metadata or {"error": ...}
+    """
+    # Database-only lookup
     cached = lakebase.run_query("SELECT * FROM exercise_metadata WHERE name = %s", (exercise_name,))
     if cached:
         return cached[0]
 
-    # Check manual knowledge base
+    # Fallback to manual knowledge base (for exercises not in WGER)
     if exercise_name in MANUAL_EXERCISES:
-        info = MANUAL_EXERCISES[exercise_name]
-        _insert_exercise_with_embedding(info)
-        return info
+        return MANUAL_EXERCISES[exercise_name]
 
-    # Try WGER API
-    url = WGER_URL
-    params = {"language": 2, "name": exercise_name}
-    try:
-        resp = requests.get(url, params=params, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json().get('results', [])
-            if data:
-                item = data[0]
-                # Validate name before processing
-                if not item.get('name'):
-                    return {"error": "Exercise found but has no name"}
-                
-                info = {
-                    'name': item.get('name'),
-                    'description': item.get('description') or "",
-                    'muscles': [m['name'] for m in item.get('muscles', [])],
-                    'equipment': [e['name'] for e in item.get('equipment', [])],
-                    'instructions': item.get('instructions', ""),
-                    'gif_url': item.get('image', [{}])[0].get('image') if item.get('image') else ""
-                }
-                _insert_exercise_with_embedding(info)
-                return info
-    except Exception as e:
-        pass  # Fall through to error case
-
-    return {"error": f"Exercise '{exercise_name}' not found in database or WGER API"}
+    # Not found → user must wait for weekly reload
+    return {
+        "error": f"Exercise '{exercise_name}' not found in database. "
+                f"It will be available after the next weekly exercise reload (Sunday 2 AM UTC)."
+    }
 
 # ========================================
 # CUSTOMIZATION TOOLS WITH SAFETY GUARDRAILS

@@ -67,50 +67,6 @@ def api_search():
                               """, (str(vec), str(vec)))
     return jsonify(rows)
 
-@app.route("/api/admin/trigger_embedding_pipeline", methods=["POST"])
-def trigger_embedding_pipeline():
-    """
-    Manually trigger the embedding pipeline job.
-    
-    Use case: After bulk importing exercises, trigger immediate embedding
-    instead of waiting for the scheduled 2 AM run.
-    
-    Usage:
-        curl -X POST http://localhost:8001/api/admin/trigger_embedding_pipeline
-    
-    Returns:
-        JSON with job run info and URL to monitor progress
-    """
-    try:
-        from databricks.sdk import WorkspaceClient
-        w = WorkspaceClient()
-        
-        JOB_ID = 1097796415965621  # Fitness: Daily Exercise Embedding
-        
-        # Check how many exercises need embedding
-        pending = lakebase.run_query(
-            "SELECT COUNT(*) as count FROM exercise_metadata WHERE embedding IS NULL"
-        )
-        pending_count = pending[0]['count'] if pending else 0
-        
-        if pending_count == 0:
-            return jsonify({
-                'status': 'skipped',
-                'message': 'All exercises already have embeddings. Nothing to do.'
-            })
-        
-        # Trigger the job
-        run = w.jobs.run_now(job_id=JOB_ID)
-        
-        return jsonify({
-            'status': 'success',
-            'message': f'Embedding pipeline triggered for {pending_count} exercises',
-            'pending_count': pending_count,
-            'run_id': run.run_id,
-            'run_url': f"https://{w.config.host}/#job/{JOB_ID}/run/{run.run_id}"
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.getenv("FLASK_RUN_PORT", 8001))
