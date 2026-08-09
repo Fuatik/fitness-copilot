@@ -4,10 +4,15 @@ This project turns periodization Excel logic into an interactive AI coaching ass
 
 ## Architecture
 
-- **MCP Server** (`mcp-server/`): FastMCP server exposing tools (recommend, replace, log, adjust) for the Agent Bricks agent.
-- **Frontend App** (`frontend-app/`): Flask UI for onboarding, viewing weekly workouts, and exercise details (GIF/instructions).
-- **Spark Pipeline** (`spark-pipeline/`): Ingests hardcoded program templates and coefficient tables into Lakebase, and fetches unstructured exercise descriptions from WGER API (no key), then embeds them for semantic search.
-- **Lakebase (Postgres + pgvector)**: Stores user profiles, test results, program templates, and embeddings.
+- **SQL Schema** (`sql/`): Database table definitions - run these manually before any pipeline execution
+  - `01_setup_core_tables.sql` - Core tables (coefficients, programs, exercises, embeddings)
+  - `02_setup_user_tables.sql` - User tables (profiles, workouts, overrides)
+- **Spark Pipeline** (`spark-pipeline/`):
+  - `ingest_and_embed.py` - **Core ETL** (run every time data changes): loads programs, exercises, and generates embeddings
+  - `setup_test_users.py` - **One-time demo setup**: creates test users and Beginner Program 3.0
+- **MCP Server** (`mcp-server/`): FastMCP server exposing tools (recommend, replace, log, adjust) for the Agent Bricks agent
+- **Frontend App** (`frontend-app/`): Flask UI for onboarding, viewing weekly workouts, and exercise details
+- **Lakebase (Postgres + pgvector)**: Stores user profiles, test results, program templates, and embeddings
 
 ## Unstructured Data Requirement
 
@@ -15,11 +20,78 @@ Unstructured data (free‑text exercise descriptions and instructions) is fetche
 
 ## Setup
 
-1. Create Databricks secrets using `scripts/setup_secrets.py`.
-2. Run the Spark notebook `spark-pipeline/ingest_and_embed.py` to create tables and load data.
-3. Deploy the MCP server and frontend as separate Databricks Apps.
-4. Register the MCP server as an external MCP tool in Agent Bricks.
-5. Create an agent with the provided system prompt.
+### STEP 1: Create Databricks Secrets
+
+Run `setup_secrets.py` to store your Lakebase connection URL:
+
+```bash
+python setup_secrets.py
+```
+
+### STEP 2: Initialize Database Tables
+
+**⚠️ IMPORTANT:** Before running the notebook, manually create the database schema by running these SQL scripts in order against your Lakebase Postgres database:
+
+```bash
+# Get your Lakebase connection URL from secrets
+# Format: postgresql://role_xxx:pwd_xxx@host:5432/postgres?sslmode=require
+
+# Run schema scripts in order
+psql "YOUR_LAKEBASE_URL" -f sql/01_setup_core_tables.sql
+psql "YOUR_LAKEBASE_URL" -f sql/02_setup_user_tables.sql
+```
+
+Verify tables were created:
+```sql
+SELECT table_name FROM information_schema.tables 
+WHERE table_schema = 'public' 
+ORDER BY table_name;
+-- Should return 10 tables: coefficients, workout_programs, program_exercises, 
+-- exercise_metadata, user_profiles, user_programs, user_tests, user_workouts, 
+-- user_exercise_overrides, intensity_overrides
+```
+
+### STEP 3: Run the Spark ETL Pipeline
+
+#### 3A. Core ETL Pipeline (run every time data changes)
+
+Open and run all cells in `spark-pipeline/ingest_and_embed.py`:
+* Inserts coefficient data and Strength Program 2.0 template
+* Creates exercise metadata with unstructured descriptions
+* Generates sentence-transformer embeddings for semantic search
+
+This is your core data pipeline - rerun when:
+* Adding new programs or exercises
+* Updating coefficient tables
+* Regenerating embeddings after model changes
+
+#### 3B. Test Users Setup (run ONCE for demo)
+
+After the core pipeline completes, run `setup_test_users.py` to create:
+* **Beginner Program 3.0** - 12-week foundation program
+* **3 test users** for agent demos:
+  * `alice@example.com` - Intermediate, Strength 2.0, Week 5
+  * `bob@example.com` - Beginner, Beginner 3.0, Week 1
+  * `charlie@example.com` - Intermediate with back issues (no program)
+
+**Only run this once** - test users persist across pipeline reruns.
+
+### STEP 4: Deploy Apps
+
+Deploy the MCP server and frontend as separate Databricks Apps:
+
+```bash
+databricks apps deploy mcp-server
+databricks apps deploy frontend-app
+```
+
+### STEP 5: Register MCP Server in Agent Bricks
+
+1. Note the MCP server app URL (e.g., `https://<workspace>.apps.cloud.databricks.com/mcp-server/`)
+2. In Agent Bricks, go to "External Tools" → "Add MCP Server"
+3. Enter the MCP server URL
+4. Create a new agent and attach the MCP tools
+5. Paste the system prompt below
 
 ## MCP Tools
 
