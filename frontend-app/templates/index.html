@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+    <title>My Program</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; border-bottom: 1px solid #ddd; text-align: left; }
+        .exercise-link { color: #2563eb; cursor: pointer; text-decoration: underline; }
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; }
+        .modal-content { background: white; padding: 20px; border-radius: 8px; max-width: 600px; width: 100%; }
+        .close { float: right; cursor: pointer; }
+    </style>
+</head>
+<body>
+<h1>Your Training Plan</h1>
+<div id="workout"></div>
+<p><input type="text" id="searchBox" placeholder="Search exercises (e.g., chest without equipment)" style="width: 70%;">
+    <button onclick="searchExercises()">Search</button>
+</p>
+<div id="searchResults"></div>
+
+<!-- Modal -->
+<div id="exerciseModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <h2 id="ex-name"></h2>
+        <p><strong>Muscles:</strong> <span id="ex-muscles"></span></p>
+        <p><strong>Equipment:</strong> <span id="ex-equipment"></span></p>
+        <p><strong>Instructions:</strong></p>
+        <p id="ex-instructions"></p>
+        <img id="ex-gif" src="" alt="Exercise GIF" style="max-width: 100%;">
+    </div>
+</div>
+
+<script>
+    const hash = new URLSearchParams(location.search).get('user_hash');
+
+    async function loadWorkout(week = 1) {
+        const resp = await fetch(`/api/workout?user_hash=${hash}&week=${week}`);
+        const data = await resp.json();
+        if (data.error) {
+            document.getElementById('workout').innerHTML = `<p>No program assigned yet.</p>`;
+            return;
+        }
+        let html = `<h3>Week ${data.week}</h3><table><tr><th>Exercise</th><th>Weight (kg)</th><th>Sets</th><th>Reps</th><th>Info</th></tr>`;
+        data.exercises.forEach(ex => {
+            html += `<tr>
+          <td>${ex.exercise}</td>
+          <td>${ex.weight_kg}</td>
+          <td>${ex.sets}</td>
+          <td>${ex.reps}</td>
+          <td><span class="exercise-link" onclick="showExercise('${ex.exercise}')">How to do it</span></td>
+        </tr>`;
+        });
+        html += '</table>';
+        document.getElementById('workout').innerHTML = html;
+    }
+
+    async function showExercise(name) {
+        const resp = await fetch(`/api/exercise/${encodeURIComponent(name)}`);
+        const data = await resp.json();
+        if (data.error) {
+            alert('Exercise details not found.');
+            return;
+        }
+        document.getElementById('ex-name').textContent = data.name;
+        document.getElementById('ex-muscles').textContent = data.muscles ? data.muscles.join(', ') : 'N/A';
+        document.getElementById('ex-equipment').textContent = data.equipment ? data.equipment.join(', ') : 'N/A';
+        document.getElementById('ex-instructions').textContent = data.instructions || 'No instructions available.';
+        document.getElementById('ex-gif').src = data.gif_url || '';
+        document.getElementById('exerciseModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('exerciseModal').style.display = 'none';
+    }
+
+    async function searchExercises() {
+        const query = document.getElementById('searchBox').value.trim();
+        if (!query) return;
+        const resp = await fetch(`/api/search_exercises?q=${encodeURIComponent(query)}`);
+        const results = await resp.json();
+        let html = '<h4>Search Results</h4><ul>';
+        results.forEach(r => {
+            html += `<li><strong>${r.name}</strong> (similarity: ${(r.similarity * 100).toFixed(1)}%)<br>${r.description}</li>`;
+        });
+        html += '</ul>';
+        document.getElementById('searchResults').innerHTML = html;
+    }
+
+    // Load week 1 by default
+    loadWorkout(1);
+</script>
+</body>
+</html>
