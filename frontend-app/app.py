@@ -35,13 +35,71 @@ def api_recommend_program():
         "reasoning": f"Based on your experience ({experience}), this program is best."
     })
 
+@app.route("/api/assign_program", methods=["POST"])
+def api_assign_program():
+    """Assign a recommended program to a user."""
+    data = request.get_json()
+    user_hash = data.get('user_hash')
+    program_id = data.get('program_id')
+    
+    if not user_hash or not program_id:
+        return jsonify({"error": "Missing user_hash or program_id"}), 400
+    
+    # Check if program exists
+    prog = lakebase.run_query("SELECT id, name FROM workout_programs WHERE id = %s", (program_id,))
+    if not prog:
+        return jsonify({"error": "Program not found"}), 404
+    
+    # Insert or update user program assignment
+    lakebase.run_query("""
+        INSERT INTO user_programs (user_id_hash, program_id, start_date)
+        VALUES (%s, %s, CURRENT_DATE)
+        ON CONFLICT (user_id_hash) 
+        DO UPDATE SET program_id = EXCLUDED.program_id, start_date = EXCLUDED.start_date
+    """, (user_hash, program_id))
+    
+    return jsonify({
+        "success": True,
+        "message": f"Assigned program '{prog[0]['name']}' to user"
+    })
+
+@app.route("/api/enter_test_results", methods=["POST"])
+def api_enter_test_results():
+    """Save 1RM test results for a user."""
+    data = request.get_json()
+    user_hash = data.get('user_hash')
+    exercise_name = data.get('exercise_name')
+    one_rm = data.get('one_rm')
+    
+    if not user_hash or not exercise_name or one_rm is None:
+        return jsonify({"error": "Missing required fields"}), 400
+    
+    # Insert or update test result
+    lakebase.run_query("""
+        INSERT INTO user_test_results (user_id_hash, exercise_name, one_rm, test_date)
+        VALUES (%s, %s, %s, CURRENT_DATE)
+        ON CONFLICT (user_id_hash, exercise_name) 
+        DO UPDATE SET one_rm = EXCLUDED.one_rm, test_date = EXCLUDED.test_date
+    """, (user_hash, exercise_name, float(one_rm)))
+    
+    return jsonify({
+        "success": True,
+        "exercise": exercise_name,
+        "one_rm": one_rm
+    })
+
 @app.route("/api/workout")
 def api_workout():
     user_hash = request.args.get('user_hash')
     week = int(request.args.get('week', 1))
+    
+    if not user_hash:
+        return jsonify({"error": "Missing user_hash"}), 400
+    
     prog = lakebase.run_query("SELECT program_id FROM user_programs WHERE user_id_hash = %s", (user_hash,))
     if not prog:
-        return jsonify({"error": "No program"}), 400
+        return jsonify({"error": "No program assigned. Please complete onboarding first."}), 400
+    
     workout = fitness_broker.generate_workout(user_hash, prog[0]['program_id'], week)
     return jsonify({"week": week, "exercises": workout})
 
